@@ -41,35 +41,40 @@
 - shadcn/ui コンポーネント
 
 ### ✅ 1-2. 認証・テナント機能（1時間）
-- [ ] Supabase Auth 設定
-- [ ] サインアップフロー実装
+- [ ] Supabase Auth セットアップ（ベストプラクティス適用）
+- [ ] 環境変数の適切な設定（API Key管理）
+- [ ] サインアップフロー実装（テナント作成含む）
 - [ ] ログインフロー実装
-- [ ] テナント（施工会社）作成機能
-- [ ] 認証ミドルウェア実装
+- [ ] 認証ミドルウェア実装（セッション管理）
 - [ ] 保護されたルート設定
 
-**詳細要件**:
-- マルチテナント対応
-- 施工会社ごとのデータ分離
-- Row Level Security (RLS)
+**セキュリティ要件**:
+- API Keyの適切な分離（anon key vs service role key）
+- 強力なパスワードポリシー
+- メール認証の有効化
+- セッション管理とリフレッシュトークン
+- CSRF保護
 
 ### ✅ 1-3. データベース設計（1時間）
-- [ ] テーブル設計・作成
+- [ ] テーブル設計・作成（完全なマルチテナント対応）
   - [ ] `tenants` (施工会社)
-  - [ ] `users` (テナントに所属するユーザー・従業員)
-  - [ ] `construction_cases` (事例)
-  - [ ] `case_images` (事例画像)
-  - [ ] `viewers` (閲覧者・元請け)
-  - [ ] `access_logs` (アクセスログ)
-  - [ ] `ai_questions` (AI質問)
-  - [ ] `inquiries` (問い合わせ)
-- [ ] RLS ポリシー設定（テナント分離）
+  - [ ] `users` (Supabase Authと連携・テナント分離)
+  - [ ] `construction_cases` (事例・公開状態管理)
+  - [ ] `case_images` (事例画像・Storage統合)
+  - [ ] `viewers` (閲覧者・元請け・重複防止)
+  - [ ] `access_logs` (アクセスログ・IP記録)
+  - [ ] `ai_questions` (AI質問・モデル記録)
+  - [ ] `inquiries` (問い合わせ・ステータス管理)
+- [ ] RLS ポリシー設定（全テーブル・完全テナント分離）
+- [ ] データベース関数作成（トランザクション保証）
+- [ ] Storage ポリシー設定（画像セキュリティ）
 - [ ] 初期データ投入
 
-**マルチテナント設計詳細**:
-- **1テナント = 1施工会社**
-- **テナント管理者 = 施工会社の代表者**
-- **テナントメンバー = 施工会社の従業員**（MVP では1人のみ）
+**セキュリティ要件**:
+- すべてのテーブルでRLS有効化
+- テナント分離の完全実装
+- Storage セキュリティポリシー
+- データベース関数でのトランザクション保証
 
 ---
 
@@ -198,27 +203,33 @@
 
 ## 📝 技術詳細メモ
 
-### データベース設計詳細
+### データベース設計詳細（Supabaseベストプラクティス）
+
 ```sql
 -- 🏢 Tenants table (施工会社)
 CREATE TABLE tenants (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   name TEXT NOT NULL, -- 会社名
+  subdomain TEXT UNIQUE, -- 将来のサブドメイン機能用（オプション）
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- 👤 Users table (テナントに所属するユーザー・従業員)
+-- 👤 Users table (Supabase Authと連携・テナント分離)
 CREATE TABLE users (
   id UUID REFERENCES auth.users(id) PRIMARY KEY,
   tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
   email TEXT NOT NULL,
-  role TEXT DEFAULT 'admin', -- admin のみ（MVP）
+  full_name TEXT,
+  role TEXT DEFAULT 'admin' CHECK (role IN ('admin', 'member')), -- MVP では admin のみ
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  
+  -- インデックス
+  CONSTRAINT unique_user_per_tenant UNIQUE (id, tenant_id)
 );
 
--- 🏗️ Construction Cases table (事例)
+-- 🏗️ Construction Cases table (事例・公開状態管理)
 CREATE TABLE construction_cases (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
@@ -227,74 +238,201 @@ CREATE TABLE construction_cases (
   description TEXT, -- 課題・問題点
   solution TEXT, -- 工夫・解決策
   result TEXT, -- 結果・成果
+  category TEXT, -- 工事種別
+  is_published BOOLEAN DEFAULT FALSE, -- 公開状態
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  
+  -- テナント分離のためのインデックス
+  CONSTRAINT fk_case_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+  CONSTRAINT fk_case_user FOREIGN KEY (user_id) REFERENCES users(id)
 );
 
--- 📸 Case Images table (事例画像)
+-- 📸 Case Images table (事例画像・Storage統合)
 CREATE TABLE case_images (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   case_id UUID REFERENCES construction_cases(id) ON DELETE CASCADE,
+  tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE, -- テナント分離
   image_url TEXT NOT NULL,
+  image_path TEXT NOT NULL, -- Supabase Storage path
+  display_order INTEGER DEFAULT 0,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- 👥 Viewers table (閲覧者・元請け)
+-- 👥 Viewers table (閲覧者・元請け・重複防止)
 CREATE TABLE viewers (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   case_id UUID REFERENCES construction_cases(id) ON DELETE CASCADE,
+  tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE, -- テナント分離
   company_name TEXT NOT NULL,
   position TEXT NOT NULL,
-  name TEXT NOT NULL,
+  full_name TEXT NOT NULL,
   email TEXT NOT NULL,
   phone TEXT NOT NULL,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  
+  -- 同じケースに同じメールアドレスで複数回アクセスを防ぐ
+  CONSTRAINT unique_viewer_per_case UNIQUE (case_id, email)
 );
 
--- 📊 Access Logs table (アクセスログ)
+-- 📊 Access Logs table (アクセスログ・IP記録)
 CREATE TABLE access_logs (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   case_id UUID REFERENCES construction_cases(id) ON DELETE CASCADE,
   viewer_id UUID REFERENCES viewers(id) ON DELETE CASCADE,
+  tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE, -- テナント分離
+  user_agent TEXT,
+  ip_address INET,
   accessed_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- 💬 AI Questions table (軽い質問・トラッキング用)
+-- 💬 AI Questions table (軽い質問・モデル記録)
 CREATE TABLE ai_questions (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   case_id UUID REFERENCES construction_cases(id) ON DELETE CASCADE,
   viewer_id UUID REFERENCES viewers(id) ON DELETE CASCADE,
+  tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE, -- テナント分離
   question TEXT NOT NULL,
   answer TEXT NOT NULL,
+  model_used TEXT DEFAULT 'gpt-4o-mini',
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- 📞 Inquiries table (問い合わせ・CV導線)
+-- 📞 Inquiries table (問い合わせ・ステータス管理)
 CREATE TABLE inquiries (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   case_id UUID REFERENCES construction_cases(id) ON DELETE CASCADE,
   viewer_id UUID REFERENCES viewers(id) ON DELETE CASCADE,
+  tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE, -- テナント分離
   subject TEXT NOT NULL,
   message TEXT NOT NULL,
+  status TEXT DEFAULT 'new' CHECK (status IN ('new', 'read', 'replied')),
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- 🔒 RLS ポリシー（テナント分離）
-CREATE POLICY "Users can only access own tenant data" ON construction_cases 
-FOR ALL USING (
-  tenant_id = (
-    SELECT tenant_id FROM users WHERE id = auth.uid()
-  )
-);
+-- 🔒 RLS ポリシー（全テーブル・完全テナント分離）
+-- 1. すべてのテーブルでRLSを有効化
+ALTER TABLE tenants ENABLE ROW LEVEL SECURITY;
+ALTER TABLE users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE construction_cases ENABLE ROW LEVEL SECURITY;
+ALTER TABLE case_images ENABLE ROW LEVEL SECURITY;
+ALTER TABLE viewers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE access_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE ai_questions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE inquiries ENABLE ROW LEVEL SECURITY;
+
+-- 2. テナント分離ポリシー
+CREATE POLICY "Users can access own tenant" ON tenants
+  FOR ALL USING (id = (SELECT tenant_id FROM users WHERE id = auth.uid()));
+
+CREATE POLICY "Users can access same tenant users" ON users
+  FOR ALL USING (tenant_id = (SELECT tenant_id FROM users WHERE id = auth.uid()));
+
+CREATE POLICY "Users can access own tenant cases" ON construction_cases
+  FOR ALL USING (tenant_id = (SELECT tenant_id FROM users WHERE id = auth.uid()));
+
+-- 3. 公開事例アクセス
+CREATE POLICY "Public can view published cases" ON construction_cases
+  FOR SELECT USING (is_published = true);
+
+-- 📁 Storage セキュリティポリシー
+CREATE POLICY "Authenticated users can upload case images" ON storage.objects
+  FOR INSERT WITH CHECK (
+    bucket_id = 'case-images' AND
+    auth.role() = 'authenticated' AND
+    (storage.foldername(name))[1] = (
+      SELECT tenant_id::text FROM users WHERE id = auth.uid()
+    )
+  );
+
+-- 🔧 データベース関数（トランザクション保証）
+CREATE OR REPLACE FUNCTION create_tenant_and_user(
+  user_id UUID,
+  user_email TEXT,
+  user_full_name TEXT,
+  tenant_name TEXT
+)
+RETURNS JSON
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  new_tenant_id UUID;
+  result JSON;
+BEGIN
+  -- テナント作成
+  INSERT INTO tenants (name) VALUES (tenant_name) RETURNING id INTO new_tenant_id;
+  
+  -- ユーザー作成
+  INSERT INTO users (id, tenant_id, email, full_name, role) 
+  VALUES (user_id, new_tenant_id, user_email, user_full_name, 'admin');
+  
+  -- 結果を返す
+  SELECT json_build_object('tenant_id', new_tenant_id, 'user_id', user_id, 'success', true) INTO result;
+  RETURN result;
+EXCEPTION
+  WHEN OTHERS THEN
+    RETURN json_build_object('success', false, 'error', SQLERRM);
+END;
+$$;
 ```
 
-### 必須パッケージ
+### セキュリティ設定詳細
+
+```typescript
+// 環境変数設定（.env.local）
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key
+SUPABASE_SERVICE_ROLE_KEY=your_service_role_key // サーバーサイドのみ
+NEXT_PUBLIC_APP_URL=https://yourdomain.com
+
+// Supabase クライアント設定
+// クライアントサイド
+export const supabase = createClientComponentClient();
+
+// サーバーサイド（API Routes）
+export const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
+
+// 認証ミドルウェア
+export async function middleware(request: NextRequest) {
+  const response = NextResponse.next();
+  const supabase = createMiddlewareClient({ req: request, res: response });
+
+  const { data: { session } } = await supabase.auth.getSession();
+
+  // 保護されたルートのチェック
+  if (request.nextUrl.pathname.startsWith('/dashboard')) {
+    if (!session) {
+      return NextResponse.redirect(new URL('/login', request.url));
+    }
+
+    // テナント確認
+    const { data: user } = await supabase
+      .from('users')
+      .select('tenant_id')
+      .eq('id', session.user.id)
+      .single();
+
+    if (!user?.tenant_id) {
+      return NextResponse.redirect(new URL('/setup', request.url));
+    }
+  }
+
+  return response;
+}
+```
+
+### 必須パッケージ（Supabaseベストプラクティス対応）
 ```json
 {
   "dependencies": {
     "next": "14.x",
     "@supabase/supabase-js": "latest",
     "@supabase/auth-helpers-nextjs": "latest",
+    "@supabase/ssr": "latest",
     "ai": "latest",
     "@ai-sdk/openai": "latest",
     "resend": "latest",
@@ -304,7 +442,15 @@ FOR ALL USING (
     "react-dropzone": "latest",
     "recharts": "latest",
     "date-fns": "latest",
-    "zustand": "latest"
+    "zustand": "latest",
+    "@tanstack/react-query": "latest"
+  },
+  "devDependencies": {
+    "@types/node": "latest",
+    "typescript": "latest",
+    "tailwindcss": "latest",
+    "autoprefixer": "latest",
+    "postcss": "latest"
   }
 }
 ```
