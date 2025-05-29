@@ -144,7 +144,7 @@ export default async function CasePage({ params }: CasePageProps) {
         </div>
         
         <div className="mb-6">
-          <Link href={`/cases/${caseData.tenant_id}`} className="inline-flex items-center text-primary hover:underline mb-2">
+          <Link href={`/case-collections/${caseData.tenant_id}`} className="inline-flex items-center text-primary hover:underline mb-2">
             <ChevronLeft size={16} className="mr-1" />
             事例集に戻る
           </Link>
