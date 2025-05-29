@@ -20,9 +20,9 @@ export default function DashboardLayout({
 
   const navItems = [
     { name: 'ダッシュボード', href: '/dashboard' },
-    { name: '事例管理', href: '/dashboard/cases' },
-    { name: '問い合わせ', href: '/dashboard/inquiries' },
-    { name: '設定', href: '/dashboard/settings' },
+    { name: '事例管理', href: '/cases' },
+    { name: '問い合わせ', href: '/inquiries' },
+    { name: '設定', href: '/settings' },
   ];
 
   return (
@@ -70,7 +70,7 @@ export default function DashboardLayout({
                   key={item.name}
                   href={item.href}
                   className={`group flex items-center px-2 py-2 text-sm font-medium rounded-md ${
-                    pathname === item.href
+                    pathname.startsWith(item.href)
                       ? 'bg-gray-100 text-gray-900'
                       : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
                   }`}
@@ -127,7 +127,7 @@ export default function DashboardLayout({
                       key={item.name}
                       href={item.href}
                       className={`group flex items-center px-2 py-2 text-base font-medium rounded-md ${
-                        pathname === item.href
+                        pathname.startsWith(item.href)
                           ? 'bg-gray-100 text-gray-900'
                           : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
                       }`}
