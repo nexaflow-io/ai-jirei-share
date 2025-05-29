@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { Card, CardContent } from '@/components/ui/card';
 import { AiQuestionsTable } from './AiQuestionsTable';
+import { ViewersTable } from './ViewersTable';
 import { 
   FileText, 
   Eye, 
@@ -33,6 +34,19 @@ interface AiQuestion {
   construction_cases: { name: string } | null;
 }
 
+interface Viewer {
+  id: string;
+  company_name: string;
+  position: string;
+  full_name: string;
+  email: string;
+  phone: string;
+  created_at: string;
+  construction_cases: { name: string } | null;
+  access_logs: { accessed_at: string }[];
+  ai_questions: { question: string; created_at: string }[];
+}
+
 interface RealtimeDashboardProps {
   initialStats: Stats;
   initialAiQuestions: AiQuestion[];
@@ -46,9 +60,26 @@ export function RealtimeDashboard({
 }: RealtimeDashboardProps) {
   const [stats, setStats] = useState<Stats>(initialStats);
   const [aiQuestions, setAiQuestions] = useState<AiQuestion[]>(initialAiQuestions);
+  const [viewers, setViewers] = useState<Viewer[]>([]);
   const supabase = createClientComponentClient();
 
+  // 閲覧者データを取得する関数
+  const fetchViewers = async () => {
+    try {
+      const response = await fetch('/api/dashboard/viewers');
+      if (response.ok) {
+        const data = await response.json();
+        setViewers(data.viewers || []);
+      }
+    } catch (error) {
+      console.error('閲覧者データの取得に失敗しました:', error);
+    }
+  };
+
   useEffect(() => {
+    // 初回の閲覧者データ取得
+    fetchViewers();
+
     // 統計情報を定期的に更新
     const statsInterval = setInterval(async () => {
       try {
@@ -83,6 +114,9 @@ export function RealtimeDashboard({
           totalInquiries: inquiriesData?.length || 0,
           totalAiQuestions: aiQuestionsData?.length || 0,
         });
+
+        // 閲覧者データも更新
+        fetchViewers();
       } catch (error) {
         console.error('統計情報の更新に失敗しました:', error);
       }
@@ -139,11 +173,30 @@ export function RealtimeDashboard({
         }
       )
       .subscribe();
+
+    // 閲覧者のリアルタイム更新
+    const viewersSubscription = supabase
+      .channel('viewers-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'viewers',
+          filter: `tenant_id=eq.${tenantId}`
+        },
+        () => {
+          // 閲覧者データが変更されたら再取得
+          fetchViewers();
+        }
+      )
+      .subscribe();
     
     // クリーンアップ関数
     return () => {
       clearInterval(statsInterval);
       supabase.removeChannel(aiQuestionsSubscription);
+      supabase.removeChannel(viewersSubscription);
     };
   }, [supabase, tenantId]);
 
@@ -237,6 +290,15 @@ export function RealtimeDashboard({
           <h2 className="text-xl font-bold text-gray-900">最近のAI質問</h2>
         </div>
         <AiQuestionsTable aiQuestions={aiQuestions} />
+      </div>
+
+      {/* 閲覧者一覧 */}
+      <div>
+        <div className="flex items-center mb-6">
+          <Users className="w-6 h-6 text-gray-600 mr-2" />
+          <h2 className="text-xl font-bold text-gray-900">閲覧者一覧</h2>
+        </div>
+        <ViewersTable viewers={viewers} />
       </div>
     </div>
   );
