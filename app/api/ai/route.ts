@@ -25,7 +25,10 @@ const hitlController = new HITLController();
 export async function POST(req: NextRequest) {
   try {
     // リクエストボディからデータを取得
-    const { caseId, viewerId, messages, tenantId } = await req.json();
+    const requestBody = await req.json();
+    console.log('AI API Request Body:', JSON.stringify(requestBody, null, 2));
+    
+    const { caseId, viewerId, messages, tenantId } = requestBody;
 
     // messagesから最新のユーザーメッセージを取得
     let question = '';
@@ -36,10 +39,31 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    console.log('Extracted parameters:', {
+      caseId: caseId || 'missing',
+      tenantId: tenantId || 'missing',
+      viewerId: viewerId || 'missing',
+      question: question || 'missing',
+      messagesLength: messages?.length || 0
+    });
+
     // 必須パラメータの検証
     if (!caseId || !question) {
+      console.error('Missing required parameters:', {
+        caseId: !!caseId,
+        question: !!question,
+        tenantId: !!tenantId,
+        requestBody: JSON.stringify(requestBody, null, 2)
+      });
+      
       return new Response(
-        JSON.stringify({ error: '必須パラメータが不足しています' }),
+        JSON.stringify({ 
+          error: '必須パラメータが不足しています',
+          details: {
+            caseId: !caseId ? 'missing' : 'present',
+            question: !question ? 'missing' : 'present'
+          }
+        }),
         { 
           status: 400,
           headers: { 'Content-Type': 'application/json' }
