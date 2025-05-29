@@ -7,9 +7,10 @@ import Image from 'next/image';
 import { createClient } from '@/lib/supabase/client';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { formatDistanceToNow } from 'date-fns';
 import { ja } from 'date-fns/locale';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Building2, Calendar, User } from 'lucide-react';
 import { ViewerInfoForm } from '@/components/ViewerInfoForm';
 
 type CasesPageProps = {
@@ -182,72 +183,110 @@ export default function CasesPage({ params }: CasesPageProps) {
   
   // 事例一覧の表示
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold mb-2">{tenantData?.name}の施工事例集</h1>
-        <p className="text-gray-600">
-          当社の施工事例をご覧いただけます。詳細を見るには各事例をクリックしてください。
-        </p>
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
+      {/* ヒーローセクション */}
+      <div className="bg-gradient-to-r from-blue-600 to-indigo-700 text-white">
+        <div className="container mx-auto px-4 py-16">
+          <div className="text-center">
+            <div className="inline-flex items-center justify-center w-16 h-16 bg-white/20 rounded-full mb-6">
+              <Building2 className="w-8 h-8" />
+            </div>
+            <h1 className="text-4xl md:text-5xl font-bold mb-4">
+              {tenantData?.name}
+            </h1>
+            <p className="text-xl text-blue-100 mb-2">施工事例集</p>
+            <p className="text-blue-200 max-w-2xl mx-auto">
+              当社の施工事例をご覧いただけます。詳細を見るには各事例をクリックしてください。
+            </p>
+          </div>
+        </div>
       </div>
-      
-      {casesWithImages.length === 0 ? (
-        <div className="text-center p-12 bg-gray-50 rounded-lg">
-          <h2 className="text-xl font-medium text-gray-700">公開されている事例はありません</h2>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {casesWithImages.map((caseItem) => (
-            <Link href={`/case/${caseItem.id}`} key={caseItem.id}>
-              <Card className="h-full hover:shadow-lg transition-shadow duration-300 cursor-pointer">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-lg">{caseItem.name}</CardTitle>
-                  <CardDescription>
-                    {caseItem.category}
-                  </CardDescription>
-                </CardHeader>
-                
-                <CardContent>
-                  {caseItem.thumbnail ? (
-                    <div className="relative w-full h-48 mb-3 overflow-hidden rounded-md">
-                      <Image
-                        src={caseItem.thumbnail}
-                        alt={caseItem.name}
-                        fill
-                        sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-                        className="object-cover"
-                      />
+
+      {/* メインコンテンツ */}
+      <div className="container mx-auto px-4 py-12">
+        {casesWithImages.length === 0 ? (
+          <div className="text-center p-16 bg-white/70 backdrop-blur-sm rounded-2xl shadow-lg border border-white/20">
+            <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Building2 className="w-8 h-8 text-gray-400" />
+            </div>
+            <h2 className="text-xl font-medium text-gray-700 mb-2">公開されている事例はありません</h2>
+            <p className="text-gray-500">現在準備中です。しばらくお待ちください。</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            {casesWithImages.map((caseItem) => (
+              <Link href={`/case/${caseItem.id}`} key={caseItem.id}>
+                <Card className="group h-full bg-white/70 backdrop-blur-sm border border-white/20 hover:shadow-2xl hover:scale-105 transition-all duration-300 cursor-pointer overflow-hidden">
+                  {/* 画像セクション */}
+                  <div className="relative">
+                    {caseItem.thumbnail ? (
+                      <div className="relative w-full h-56 overflow-hidden">
+                        <Image
+                          src={caseItem.thumbnail}
+                          alt={caseItem.name}
+                          fill
+                          sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                          className="object-cover group-hover:scale-110 transition-transform duration-300"
+                        />
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent" />
+                      </div>
+                    ) : (
+                      <div className="w-full h-56 bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center">
+                        <Building2 className="w-12 h-12 text-gray-400" />
+                      </div>
+                    )}
+                    
+                    {/* カテゴリバッジ */}
+                    <div className="absolute top-4 left-4">
+                      <Badge variant="secondary" className="bg-white/90 text-gray-700 shadow-sm">
+                        {caseItem.category || '未分類'}
+                      </Badge>
                     </div>
-                  ) : (
-                    <div className="w-full h-48 mb-3 bg-gray-100 flex items-center justify-center rounded-md">
-                      <p className="text-gray-400">画像なし</p>
-                    </div>
-                  )}
-                  <p className="line-clamp-3 text-sm text-gray-600">
-                    {caseItem.description}
-                  </p>
-                </CardContent>
-                
-                <CardFooter className="text-xs text-gray-500">
-                  <div className="flex justify-between w-full">
-                    <span>担当: {caseItem.users?.full_name || '不明'}</span>
-                    <span>
-                      {formatDistanceToNow(new Date(caseItem.updated_at), { 
-                        addSuffix: true,
-                        locale: ja 
-                      })}
-                    </span>
                   </div>
-                </CardFooter>
-              </Card>
-            </Link>
-          ))}
+
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-xl group-hover:text-blue-600 transition-colors line-clamp-2">
+                      {caseItem.name}
+                    </CardTitle>
+                  </CardHeader>
+                  
+                  <CardContent className="pb-4">
+                    <p className="line-clamp-3 text-gray-600 leading-relaxed">
+                      {caseItem.description || '詳細情報をご覧ください。'}
+                    </p>
+                  </CardContent>
+                  
+                  <CardFooter className="pt-0 flex items-center justify-between text-sm text-gray-500">
+                    <div className="flex items-center">
+                      <User className="w-4 h-4 mr-1" />
+                      <span>{caseItem.users?.full_name || '担当者'}</span>
+                    </div>
+                    <div className="flex items-center">
+                      <Calendar className="w-4 h-4 mr-1" />
+                      <span>
+                        {formatDistanceToNow(new Date(caseItem.updated_at), { 
+                          addSuffix: true,
+                          locale: ja 
+                        })}
+                      </span>
+                    </div>
+                  </CardFooter>
+                </Card>
+              </Link>
+            ))}
+          </div>
+        )}
+        
+        {/* フッターアクション */}
+        <div className="mt-16 text-center">
+          <Button 
+            variant="outline" 
+            onClick={() => router.push('/')}
+            className="bg-white/70 backdrop-blur-sm border-white/20 hover:bg-white/90 transition-all duration-300"
+          >
+            トップページに戻る
+          </Button>
         </div>
-      )}
-      
-      <div className="mt-8 text-center">
-        <Button variant="outline" onClick={() => router.push('/')}>
-          トップページに戻る
-        </Button>
       </div>
     </div>
   );

@@ -4,7 +4,8 @@ import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Building2, User, Mail, Phone, Briefcase, CheckCircle } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
 
 import {
   Form,
@@ -16,6 +17,7 @@ import {
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { createClient } from '@/lib/supabase/client';
 
 // バリデーションスキーマ
@@ -37,6 +39,7 @@ type ViewerInfoFormProps = {
 
 export function ViewerInfoForm({ caseId, tenantId, onComplete }: ViewerInfoFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const { toast } = useToast();
   const supabase = createClient();
   
   // フォームの初期化
@@ -50,181 +53,235 @@ export function ViewerInfoForm({ caseId, tenantId, onComplete }: ViewerInfoFormP
       phone: '',
     },
   });
-  
-  // フォーム送信処理
-  const onSubmit = async (values: ViewerFormValues) => {
+
+  const onSubmit = async (data: ViewerFormValues) => {
+    setIsSubmitting(true);
+    
     try {
-      setIsSubmitting(true);
-      console.log('送信開始:', { values, caseId, tenantId });
-      
-      // データの確認
-      if (!tenantId || !caseId) {
-        console.error('必要なデータが不足しています:', { tenantId, caseId });
-        alert('データが不足しています。ページを再読み込みしてください。');
-        return;
-      }
-      
       // 閲覧者情報をデータベースに保存
-      const viewerData = {
-        case_id: caseId,
-        tenant_id: tenantId,
-        company_name: values.company_name,
-        position: values.position,
-        full_name: values.full_name,
-        email: values.email,
-        phone: values.phone,
-        created_at: new Date().toISOString()
-      };
-      
-      console.log('送信するデータ:', viewerData);
-      
-      const { data, error: viewerError } = await supabase
+      const { data: newViewer, error: createViewerError } = await supabase
         .from('viewers')
-        .insert(viewerData)
+        .insert({
+          case_id: caseId,
+          tenant_id: tenantId,
+          company_name: data.company_name,
+          position: data.position,
+          full_name: data.full_name,
+          email: data.email,
+          phone: data.phone,
+        })
         .select('id')
         .single();
       
-      if (viewerError) {
-        console.error('Supabaseエラー:', viewerError);
-        throw new Error(`閲覧者情報の保存に失敗しました: ${viewerError.message}`);
+      if (createViewerError) {
+        console.error('閲覧者記録エラー:', createViewerError);
+        throw new Error('閲覧者情報の記録に失敗しました');
       }
       
-      if (!data || !data.id) {
-        console.error('データが返されませんでした');
-        throw new Error('データが正しく保存されませんでした');
-      }
-      
-      console.log('閲覧者情報保存成功:', data);
-      
-      // LocalStorageに閲覧者情報を保存（次回以降の入力スキップ用）
-      const storageData = {
-        ...values,
-        id: data.id,
-        timestamp: new Date().toISOString(),
-      };
-      
-      localStorage.setItem('viewer_info', JSON.stringify(storageData));
-      console.log('localStorageに保存完了');
-      
-      // アクセスログの記録は必須ではないので、エラーが発生しても続行
-      try {
-        await supabase
+      // アクセスログを記録
+      if (newViewer?.id) {
+        const { error: logError } = await supabase
           .from('access_logs')
           .insert({
             case_id: caseId,
-            viewer_id: data.id,
             tenant_id: tenantId,
-            referer: window.location.href,
+            viewer_id: newViewer.id,
+            user_agent: navigator.userAgent,
+            ip_address: null, // IPアドレスはサーバーサイドで取得する必要がある
           });
-        console.log('アクセスログ記録成功');
-      } catch (logError) {
-        console.error('アクセスログ記録エラー:', logError);
+        
+        if (logError) {
+          console.error('アクセスログ記録エラー:', logError);
+        }
       }
       
+      // 成功通知
+      toast({
+        variant: "success",
+        title: "登録完了",
+        description: "閲覧者情報が正常に登録されました。事例をご覧いただけます。",
+      });
+      
       // 完了通知
-      console.log('処理完了、コールバック実行');
-      onComplete();
+      setTimeout(() => {
+        onComplete();
+      }, 1000);
+      
     } catch (error) {
       console.error('閲覧者情報送信エラー:', error);
-      alert(`情報の送信に失敗しました: ${error instanceof Error ? error.message : '不明なエラー'}`); 
+      toast({
+        variant: "destructive",
+        title: "エラー",
+        description: `情報の送信に失敗しました: ${error instanceof Error ? error.message : '不明なエラー'}`,
+      });
     } finally {
       setIsSubmitting(false);
     }
   };
   
   return (
-    <div className="bg-white p-6 rounded-lg shadow-md">
-      <h2 className="text-2xl font-bold mb-6 text-center">閲覧者情報の入力</h2>
-      <p className="text-gray-600 mb-6 text-center">
-        事例を閲覧するには、以下の情報を入力してください。
-      </p>
-      
-      <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-          <FormField
-            control={form.control}
-            name="company_name"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>会社名 <span className="text-red-500">*</span></FormLabel>
-                <FormControl>
-                  <Input placeholder="例：株式会社〇〇建設" {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 flex items-center justify-center p-4">
+      <div className="w-full max-w-4xl">
+        <Card className="bg-white/80 backdrop-blur-sm border border-white/20 shadow-2xl">
+          <CardHeader className="text-center pb-8">
+            <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center mx-auto mb-6 shadow-lg">
+              <Building2 className="w-8 h-8 text-white" />
+            </div>
+            <CardTitle className="text-3xl font-bold text-gray-900 mb-2">
+              閲覧者情報の入力
+            </CardTitle>
+            <p className="text-gray-600 text-lg">
+              施工事例を閲覧するために、以下の情報をご入力ください
+            </p>
+          </CardHeader>
           
-          <FormField
-            control={form.control}
-            name="position"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>役職 <span className="text-red-500">*</span></FormLabel>
-                <FormControl>
-                  <Input placeholder="例：工事部長" {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-          
-          <FormField
-            control={form.control}
-            name="full_name"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>氏名 <span className="text-red-500">*</span></FormLabel>
-                <FormControl>
-                  <Input placeholder="例：山田太郎" {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-          
-          <FormField
-            control={form.control}
-            name="email"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>メールアドレス <span className="text-red-500">*</span></FormLabel>
-                <FormControl>
-                  <Input placeholder="例：taro.yamada@example.com" type="email" {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-          
-          <FormField
-            control={form.control}
-            name="phone"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>電話番号 <span className="text-red-500">*</span></FormLabel>
-                <FormControl>
-                  <Input placeholder="例：03-1234-5678" {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-          
-          <div className="pt-4">
-            <Button type="submit" className="w-full" disabled={isSubmitting}>
-              {isSubmitting ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  送信中...
-                </>
-              ) : (
-                '事例を閲覧する'
-              )}
-            </Button>
-          </div>
-        </form>
-      </Form>
+          <CardContent className="px-8 pb-8">
+            <Form {...form}>
+              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+                {/* 2カラムレイアウト */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <FormField
+                    control={form.control}
+                    name="company_name"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-sm font-semibold text-gray-700 flex items-center">
+                          <Building2 className="w-4 h-4 mr-2 text-blue-600" />
+                          会社名 <span className="text-red-500 ml-1">*</span>
+                        </FormLabel>
+                        <FormControl>
+                          <Input 
+                            placeholder="例：株式会社〇〇建設" 
+                            className="h-12 border-gray-200 focus:border-blue-500 focus:ring-blue-500"
+                            {...field} 
+                          />
+                        </FormControl>
+                        <FormMessage className="text-red-500 text-xs mt-1" />
+                      </FormItem>
+                    )}
+                  />
+                  
+                  <FormField
+                    control={form.control}
+                    name="position"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-sm font-semibold text-gray-700 flex items-center">
+                          <Briefcase className="w-4 h-4 mr-2 text-blue-600" />
+                          役職 <span className="text-red-500 ml-1">*</span>
+                        </FormLabel>
+                        <FormControl>
+                          <Input 
+                            placeholder="例：工事部長" 
+                            className="h-12 border-gray-200 focus:border-blue-500 focus:ring-blue-500"
+                            {...field} 
+                          />
+                        </FormControl>
+                        <FormMessage className="text-red-500 text-xs mt-1" />
+                      </FormItem>
+                    )}
+                  />
+                  
+                  <FormField
+                    control={form.control}
+                    name="full_name"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-sm font-semibold text-gray-700 flex items-center">
+                          <User className="w-4 h-4 mr-2 text-blue-600" />
+                          氏名 <span className="text-red-500 ml-1">*</span>
+                        </FormLabel>
+                        <FormControl>
+                          <Input 
+                            placeholder="例：山田太郎" 
+                            className="h-12 border-gray-200 focus:border-blue-500 focus:ring-blue-500"
+                            {...field} 
+                          />
+                        </FormControl>
+                        <FormMessage className="text-red-500 text-xs mt-1" />
+                      </FormItem>
+                    )}
+                  />
+                  
+                  <FormField
+                    control={form.control}
+                    name="email"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-sm font-semibold text-gray-700 flex items-center">
+                          <Mail className="w-4 h-4 mr-2 text-blue-600" />
+                          メールアドレス <span className="text-red-500 ml-1">*</span>
+                        </FormLabel>
+                        <FormControl>
+                          <Input 
+                            placeholder="例：taro.yamada@example.com" 
+                            type="email" 
+                            className="h-12 border-gray-200 focus:border-blue-500 focus:ring-blue-500"
+                            {...field} 
+                          />
+                        </FormControl>
+                        <FormMessage className="text-red-500 text-xs mt-1" />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+                
+                {/* 電話番号は1カラム */}
+                <FormField
+                  control={form.control}
+                  name="phone"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-sm font-semibold text-gray-700 flex items-center">
+                        <Phone className="w-4 h-4 mr-2 text-blue-600" />
+                        電話番号 <span className="text-red-500 ml-1">*</span>
+                      </FormLabel>
+                      <FormControl>
+                        <Input 
+                          placeholder="例：03-1234-5678" 
+                          className="h-12 border-gray-200 focus:border-blue-500 focus:ring-blue-500"
+                          {...field} 
+                        />
+                      </FormControl>
+                      <FormMessage className="text-red-500 text-xs mt-1" />
+                    </FormItem>
+                  )}
+                />
+                
+                {/* 送信ボタン */}
+                <div className="pt-6">
+                  <Button 
+                    type="submit" 
+                    className="w-full h-14 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold text-lg shadow-lg hover:shadow-xl transition-all duration-200"
+                    disabled={isSubmitting}
+                  >
+                    {isSubmitting ? (
+                      <>
+                        <Loader2 className="mr-3 h-5 w-5 animate-spin" />
+                        送信中...
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle className="mr-3 h-5 w-5" />
+                        事例を閲覧する
+                      </>
+                    )}
+                  </Button>
+                </div>
+                
+                {/* 注意事項 */}
+                <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                  <p className="text-sm text-blue-800 leading-relaxed">
+                    <strong>個人情報の取り扱いについて：</strong>
+                    ご入力いただいた情報は、事例閲覧の管理および今後のサービス向上のためにのみ使用いたします。
+                    第三者への提供は行いません。
+                  </p>
+                </div>
+              </form>
+            </Form>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }

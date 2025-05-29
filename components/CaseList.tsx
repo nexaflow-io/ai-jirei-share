@@ -17,6 +17,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import CopyCollectionLinkButton from '@/components/CopyCollectionLinkButton';
 
 type Case = {
   id: string;
@@ -162,6 +163,7 @@ export function CaseList({ cases }: CaseListProps) {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                     <div className="flex justify-end space-x-2">
+                      <CopyCollectionLinkButton url={`${window.location.origin}/case-collections/${caseItem.id}`}/>
                       <Button
                         variant="ghost"
                         size="sm"
