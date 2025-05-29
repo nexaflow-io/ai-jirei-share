@@ -107,7 +107,7 @@ export default async function DashboardPage() {
       <div className="bg-white p-4 rounded-lg shadow mt-6">
         <h2 className="text-lg font-semibold mb-4">クイックアクション</h2>
         <div className="flex flex-wrap gap-2">
-          <a href="/dashboard/cases/new" className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">
+          <a href="/cases/new" className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">
             新しい事例を追加
           </a>
         </div>

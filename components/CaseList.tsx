@@ -91,7 +91,7 @@ export function CaseList({ cases }: CaseListProps) {
       <div className="text-center p-8 bg-white rounded-lg shadow">
         <h3 className="text-lg font-medium mb-2">事例がありません</h3>
         <p className="text-gray-500 mb-4">新しい事例を作成して、元請けと共有しましょう</p>
-        <Link href="/dashboard/cases/new">
+        <Link href="/cases/new">
           <Button>新しい事例を作成</Button>
         </Link>
       </div>
@@ -171,7 +171,7 @@ export function CaseList({ cases }: CaseListProps) {
                         <Copy size={16} className={copiedId === caseItem.id ? 'text-green-500' : ''} />
                         <span className="sr-only">共有</span>
                       </Button>
-                      <Link href={`/dashboard/cases/${caseItem.id}/edit`}>
+                      <Link href={`/cases/${caseItem.id}/edit`}>
                         <Button variant="ghost" size="sm">
                           <Edit size={16} />
                           <span className="sr-only">編集</span>

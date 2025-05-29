@@ -150,7 +150,7 @@ export function CaseForm({ initialData, isEditing = false }: CaseFormProps) {
       }
 
       // 事例一覧ページにリダイレクト
-      router.push('/dashboard/cases');
+      router.push('/cases');
       router.refresh();
     } catch (err: any) {
       console.error('事例保存エラー:', err);

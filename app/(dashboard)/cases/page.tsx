@@ -99,7 +99,7 @@ export default async function CasesPage() {
     <div className="p-6">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">施工事例一覧</h1>
-        <Link href="/dashboard/cases/new">
+        <Link href="/cases/new">
           <Button>新規事例作成</Button>
         </Link>
       </div>
