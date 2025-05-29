@@ -26,7 +26,7 @@ interface Stats {
 
 interface AiQuestion {
   id: string;
-  case_id: string;
+  case_id: string | null;
   question: string;
   answer: string;
   model: string;

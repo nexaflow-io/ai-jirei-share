@@ -247,7 +247,7 @@ ${casesContext}
           if (viewerId && result.text) {
             try {
               const insertData = {
-                case_id: '00000000-0000-0000-0000-000000000000', // 事例集全体への質問を示す特別なUUID
+                case_id: null, // 事例集全体への質問の場合はNULL
                 tenant_id: tenantId,
                 viewer_id: viewerId,
                 question: processedQuestion,

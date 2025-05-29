@@ -64,7 +64,7 @@ export type Database = {
       ai_questions: {
         Row: {
           answer: string
-          case_id: string
+          case_id: string | null
           created_at: string
           id: string
           model_used: string
@@ -74,7 +74,7 @@ export type Database = {
         }
         Insert: {
           answer: string
-          case_id: string
+          case_id?: string | null
           created_at?: string
           id?: string
           model_used?: string
@@ -84,7 +84,7 @@ export type Database = {
         }
         Update: {
           answer?: string
-          case_id?: string
+          case_id?: string | null
           created_at?: string
           id?: string
           model_used?: string

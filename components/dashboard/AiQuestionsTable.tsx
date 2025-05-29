@@ -8,7 +8,7 @@ import { MessageSquare, Calendar, Building2 } from 'lucide-react';
 
 interface AiQuestion {
   id: string;
-  case_id: string;
+  case_id: string | null;
   question: string;
   answer: string;
   model: string;
@@ -84,7 +84,10 @@ export function AiQuestionsTable({ aiQuestions }: AiQuestionsTableProps) {
                         <div className="flex items-center">
                           <div className="w-2 h-2 bg-blue-500 rounded-full mr-3"></div>
                           <span className="text-sm font-medium text-gray-900">
-                            {question.construction_cases?.name || '事例名不明'}
+                            {question.case_id === null 
+                              ? '事例集全体' 
+                              : question.construction_cases?.name || '事例名不明'
+                            }
                           </span>
                         </div>
                       </td>
