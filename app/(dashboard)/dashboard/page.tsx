@@ -73,7 +73,7 @@ const fetchDashboardData = async (): Promise<DashboardStats> => {
         id,
         question,
         answer,
-        model,
+        model_used,
         created_at,
         viewer:viewers(company_name)
       `)
