@@ -1,143 +1,138 @@
 'use client';
 
 import { useState } from 'react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
 import { useAuth } from '@/hooks/useAuth';
 import Link from 'next/link';
 
+import { Button } from '@/components/ui/button';
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form';
+import { Input } from '@/components/ui/input';
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+
+import { signUpSchema, type SignUpFormValues } from '@/lib/validations/auth';
+
 export function SignupForm() {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [fullName, setFullName] = useState('');
-  const [companyName, setCompanyName] = useState('');
-  const [error, setError] = useState<string | null>(null);
+  const [serverError, setServerError] = useState<string | null>(null);
   const { signUp, loading } = useAuth();
 
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    setError(null);
+  const form = useForm<SignUpFormValues>({
+    resolver: zodResolver(signUpSchema),
+    defaultValues: {
+      email: '',
+      password: '',
+      fullName: '',
+      companyName: '',
+    },
+  });
 
-    // 入力バリデーション
-    if (!email || !password || !confirmPassword || !fullName || !companyName) {
-      setError('すべての項目を入力してください');
-      return;
-    }
+  const onSubmit = async (data: SignUpFormValues) => {
+    setServerError(null);
 
-    if (password !== confirmPassword) {
-      setError('パスワードが一致しません');
-      return;
-    }
-
-    if (password.length < 8) {
-      setError('パスワードは8文字以上で入力してください');
-      return;
-    }
-
-    const result = await signUp(email, password, fullName, companyName);
+    const result = await signUp(data.email, data.password, data.fullName, data.companyName);
     if (!result.success) {
-      setError(result.error || '登録に失敗しました');
+      setServerError(result.error || '登録に失敗しました');
     }
   };
 
   return (
-    <div className="w-full max-w-md mx-auto p-6 bg-white rounded-lg shadow-md">
-      <h2 className="text-2xl font-bold text-center mb-6">新規登録</h2>
+    <Card className="w-full max-w-md mx-auto">
+      <CardHeader>
+        <CardTitle className="text-2xl font-bold text-center">新規登録</CardTitle>
+        <CardDescription className="text-center">アカウントを作成して事例管理を始めましょう</CardDescription>
+      </CardHeader>
       
-      {error && (
-        <div className="mb-4 p-3 bg-red-100 text-red-700 rounded-md">
-          {error}
-        </div>
-      )}
+      <CardContent>
+        {serverError && (
+          <div className="mb-4 p-3 bg-destructive/10 text-destructive rounded-md">
+            {serverError}
+          </div>
+        )}
+        
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            <FormField
+              control={form.control}
+              name="email"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>メールアドレス</FormLabel>
+                  <FormControl>
+                    <Input placeholder="example@company.com" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            
+            <FormField
+              control={form.control}
+              name="fullName"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>氏名</FormLabel>
+                  <FormControl>
+                    <Input placeholder="山田 太郎" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            
+            <FormField
+              control={form.control}
+              name="companyName"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>会社名</FormLabel>
+                  <FormControl>
+                    <Input placeholder="株式会社〇〇" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            
+            <FormField
+              control={form.control}
+              name="password"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>パスワード</FormLabel>
+                  <FormControl>
+                    <Input type="password" {...field} />
+                  </FormControl>
+                  <p className="text-xs text-muted-foreground">
+                    8文字以上で、大文字・小文字・数字を含めてください
+                  </p>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            
+            <Button type="submit" className="w-full" disabled={loading}>
+              {loading ? '登録中...' : '登録する'}
+            </Button>
+          </form>
+        </Form>
+      </CardContent>
       
-      <form onSubmit={handleSubmit}>
-        <div className="mb-4">
-          <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
-            メールアドレス
-          </label>
-          <input
-            id="email"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md"
-            required
-          />
-        </div>
-        
-        <div className="mb-4">
-          <label htmlFor="fullName" className="block text-sm font-medium text-gray-700 mb-1">
-            氏名
-          </label>
-          <input
-            id="fullName"
-            type="text"
-            value={fullName}
-            onChange={(e) => setFullName(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md"
-            required
-          />
-        </div>
-        
-        <div className="mb-4">
-          <label htmlFor="companyName" className="block text-sm font-medium text-gray-700 mb-1">
-            会社名
-          </label>
-          <input
-            id="companyName"
-            type="text"
-            value={companyName}
-            onChange={(e) => setCompanyName(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md"
-            required
-          />
-        </div>
-        
-        <div className="mb-4">
-          <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
-            パスワード
-          </label>
-          <input
-            id="password"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md"
-            required
-          />
-          <p className="mt-1 text-xs text-gray-500">8文字以上で入力してください</p>
-        </div>
-        
-        <div className="mb-6">
-          <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700 mb-1">
-            パスワード（確認用）
-          </label>
-          <input
-            id="confirmPassword"
-            type="password"
-            value={confirmPassword}
-            onChange={(e) => setConfirmPassword(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md"
-            required
-          />
-        </div>
-        
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 transition-colors disabled:bg-blue-300"
-        >
-          {loading ? '登録中...' : '登録する'}
-        </button>
-      </form>
-      
-      <div className="mt-4 text-center">
-        <p className="text-sm text-gray-600">
+      <CardFooter className="flex justify-center">
+        <p className="text-sm text-muted-foreground">
           すでにアカウントをお持ちの場合は{' '}
-          <Link href="/auth/login" className="text-blue-600 hover:underline">
+          <Link href="/auth/login" className="text-primary hover:underline">
             ログイン
           </Link>
         </p>
-      </div>
-    </div>
+      </CardFooter>
+    </Card>
   );
 } 

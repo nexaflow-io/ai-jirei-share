@@ -1,5 +1,6 @@
 import { createServerClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
+import { RealtimeDashboard } from '@/components/dashboard/RealtimeDashboard';
 
 export const metadata = {
   title: 'ダッシュボード | AI事例シェア',
@@ -27,12 +28,60 @@ export default async function DashboardPage() {
     redirect('/auth/signup');
   }
   
-  // 統計情報取得（仮）
+  // 統計情報取得
+  const { data: casesData } = await supabase
+    .from('construction_cases')
+    .select('id, is_published')
+    .eq('tenant_id', userData.tenant_id);
+    
+  const { data: viewersData } = await supabase
+    .from('viewers')
+    .select('id')
+    .eq('tenant_id', userData.tenant_id);
+    
+  const { data: inquiriesData } = await supabase
+    .from('inquiries')
+    .select('id')
+    .eq('tenant_id', userData.tenant_id);
+    
+  const { data: aiQuestionsCountData } = await supabase
+    .from('ai_questions')
+    .select('id')
+    .eq('tenant_id', userData.tenant_id);
+  
+  // AI質問履歴を取得
+  const { data: aiQuestionsDetailData, error: aiQuestionsError } = await supabase
+    .from('ai_questions')
+    .select(`
+      id,
+      case_id,
+      question,
+      answer,
+      model_used,
+      created_at,
+      construction_cases (name)
+    `)
+    .eq('tenant_id', userData.tenant_id)
+    .order('created_at', { ascending: false })
+    .limit(10);
+    
+  // 型変換を行い、model_usedをmodelにマッピング
+  const aiQuestions = aiQuestionsDetailData ? aiQuestionsDetailData.map(item => ({
+    id: item.id,
+    case_id: item.case_id,
+    question: item.question,
+    answer: item.answer,
+    model: item.model_used, // model_usedをmodelにマッピング
+    created_at: item.created_at,
+    construction_cases: item.construction_cases
+  })) : [];
+  
   const stats = {
-    totalCases: 0,
-    publishedCases: 0,
-    totalViews: 0,
-    totalInquiries: 0
+    totalCases: casesData?.length || 0,
+    publishedCases: casesData?.filter(c => c.is_published)?.length || 0,
+    totalViews: viewersData?.length || 0,
+    totalInquiries: inquiriesData?.length || 0,
+    totalAiQuestions: aiQuestionsCountData?.length || 0
   };
   
   return (
@@ -48,34 +97,14 @@ export default async function DashboardPage() {
         </div>
       </div>
       
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        <div className="bg-white p-4 rounded-lg shadow">
-          <h3 className="text-sm font-medium text-gray-500">事例数</h3>
-          <p className="text-2xl font-bold">{stats.totalCases}</p>
-        </div>
-        
-        <div className="bg-white p-4 rounded-lg shadow">
-          <h3 className="text-sm font-medium text-gray-500">公開事例数</h3>
-          <p className="text-2xl font-bold">{stats.publishedCases}</p>
-        </div>
-        
-        <div className="bg-white p-4 rounded-lg shadow">
-          <h3 className="text-sm font-medium text-gray-500">総閲覧数</h3>
-          <p className="text-2xl font-bold">{stats.totalViews}</p>
-        </div>
-        
-        <div className="bg-white p-4 rounded-lg shadow">
-          <h3 className="text-sm font-medium text-gray-500">問い合わせ数</h3>
-          <p className="text-2xl font-bold">{stats.totalInquiries}</p>
-        </div>
-      </div>
+      {/* リアルタイムダッシュボード */}
+      <RealtimeDashboard 
+        initialStats={stats} 
+        initialAiQuestions={aiQuestions || []} 
+        tenantId={userData.tenant_id} 
+      />
       
-      <div className="bg-white p-4 rounded-lg shadow mb-6">
-        <h2 className="text-lg font-semibold mb-4">最近の活動</h2>
-        <p className="text-gray-600">まだ活動記録がありません。</p>
-      </div>
-      
-      <div className="bg-white p-4 rounded-lg shadow">
+      <div className="bg-white p-4 rounded-lg shadow mt-6">
         <h2 className="text-lg font-semibold mb-4">クイックアクション</h2>
         <div className="flex flex-wrap gap-2">
           <a href="/dashboard/cases/new" className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">
