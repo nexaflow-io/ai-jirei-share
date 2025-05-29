@@ -275,9 +275,7 @@ export default async function CasePage({ params }: CasePageProps) {
                   <AiChatWidget 
                     caseId={params.id} 
                     viewerId={viewerId} 
-                    caseName={caseData.name}
                     tenantId={caseData.tenant_id}
-                    position="inline"
                   />
                 </div>
 

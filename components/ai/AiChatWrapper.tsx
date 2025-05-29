@@ -14,9 +14,6 @@ export function AiChatWrapper({ caseId, viewerId, caseName }: AiChatWrapperProps
     <AiChatWidget 
       caseId={caseId} 
       viewerId={viewerId} 
-      caseName={caseName || "この事例"}
-      position="inline"
-      className="w-full"
     />
   );
 }

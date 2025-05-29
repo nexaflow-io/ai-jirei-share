@@ -292,9 +292,8 @@ export default function CasesPage({ params }: CasesPageProps) {
       {tenantData && (
         <AiChatWidget 
           caseId="general" 
-          caseName={`${tenantData.name}の事例について`}
-          position="bottom-right"
           tenantId={tenantData.id}
+          isFloating={true}
         />
       )}
     </div>
