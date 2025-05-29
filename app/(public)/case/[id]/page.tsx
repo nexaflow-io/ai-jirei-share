@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Carousel } from '@/components/ui/carousel';
 import { ChevronLeft, Building2, User, Calendar, MapPin, Phone, Mail } from 'lucide-react';
 import AiChatWidget from '@/components/AiChatWidget';
+import { CaseDetailClient } from '@/components/CaseDetailClient';
 import { formatDistanceToNow } from 'date-fns';
 import { ja } from 'date-fns/locale';
 
@@ -107,18 +108,6 @@ export default async function CasePage({ params }: CasePageProps) {
     }
   }
 
-  // アクセスログを記録
-  if (viewerId) {
-    await supabase
-      .from('access_logs')
-      .insert({
-        case_id: params.id,
-        tenant_id: caseData.tenant_id,
-        viewer_id: viewerId,
-        referer: referer,
-      });
-  }
-
   // メタデータを設定
   const title = `${caseData.name} | ${caseData.tenants?.name || '施工事例'}`;
   const description = caseData.description ? caseData.description.substring(0, 160) : '施工事例の詳細情報';
@@ -136,6 +125,9 @@ export default async function CasePage({ params }: CasePageProps) {
       </head>
 
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
+        {/* クライアントサイドアクセスログ記録 */}
+        <CaseDetailClient caseId={caseData.id} tenantId={caseData.tenant_id} />
+        
         {/* ヘッダー */}
         <div className="bg-white/80 backdrop-blur-sm border-b border-white/20 sticky top-0 z-10">
           <div className="container mx-auto px-4 py-4">

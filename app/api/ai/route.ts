@@ -327,18 +327,19 @@ ${casesContext}
         timestamp: new Date().toISOString()
       });
       
-      // セキュリティインシデントとしてアクセスログに記録
-      try {
-        await supabase.from('access_logs').insert({
-          case_id: caseId,
-          tenant_id: tenantId,
-          viewer_id: viewerId || 'anonymous',
-          ip_address: req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip'),
-          user_agent: req.headers.get('user-agent'),
-          accessed_at: new Date().toISOString()
-        });
-      } catch (logError) {
-        console.error('アクセスログ記録失敗:', logError);
+      // アクセスログを記録（権限がない場合、viewerIdがある場合のみ）
+      if (viewerId) {
+        try {
+          await supabase.from('access_logs').insert({
+            case_id: caseId,
+            tenant_id: tenantId,
+            viewer_id: viewerId,
+            ip_address: req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip'),
+            user_agent: req.headers.get('user-agent'),
+          });
+        } catch (logError) {
+          console.error('アクセスログ記録失敗:', logError);
+        }
       }
       
       return new Response(

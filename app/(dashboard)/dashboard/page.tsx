@@ -1,199 +1,330 @@
-import { redirect } from 'next/navigation';
-import { RealtimeDashboard } from '@/components/dashboard/RealtimeDashboard';
-import { createServerClient } from '@/lib/supabase/server';
+'use client';
+
+import { useEffect, useState } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { 
-  Building2, 
-  User, 
-  Calendar,
-  TrendingUp
+  Users, 
+  Eye, 
+  FileText, 
+  MessageSquare, 
+  TrendingUp, 
+  TrendingDown,
+  ArrowUpRight,
+  Clock,
+  Target,
+  Bot,
+  Building2
 } from 'lucide-react';
+import { createClient } from '@/lib/supabase/client';
+import Link from 'next/link';
+import { formatDistanceToNow } from 'date-fns';
+import { ja } from 'date-fns/locale';
 
-export const metadata = {
-  title: 'ダッシュボード | AI事例シェア',
-  description: 'AI事例シェアのダッシュボードです',
-};
+interface DashboardStats {
+  totalViewers: number;
+  totalAccessLogs: number;
+  totalCases: number;
+  totalInquiries: number;
+  recentViewers: any[];
+  topCases: any[];
+  recentActivities: any[];
+}
 
-// ページを動的にレンダリング（キャッシュ無効化）
-export const dynamic = 'force-dynamic';
-export const revalidate = 0;
+export default function DashboardPage() {
+  const [stats, setStats] = useState<DashboardStats>({
+    totalViewers: 0,
+    totalAccessLogs: 0,
+    totalCases: 0,
+    totalInquiries: 0,
+    recentViewers: [],
+    topCases: [],
+    recentActivities: []
+  });
+  const [loading, setLoading] = useState(true);
 
-export default async function DashboardPage() {
-  const supabase = createServerClient();
-  
-  try {
-    // セッション確認
-    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-    
-    if (sessionError || !session) {
-      redirect('/auth/login');
-    }
-    
-    // ユーザー情報取得
-    const { data: userData, error: userError } = await supabase
-      .from('users')
-      .select('id, tenant_id, tenants(id, name)')
-      .eq('id', session.user.id)
-      .single();
-    
-    if (userError || !userData || !userData.tenant_id) {
-      redirect('/auth/signup');
-    }
-    
-    // 統計情報とAI質問履歴を並列で取得（高速化）
-    const [casesResult, viewersResult, inquiriesResult, aiQuestionsCountResult, aiQuestionsDetailResult] = await Promise.all([
-      supabase
-        .from('construction_cases')
-        .select('id, is_published')
-        .eq('tenant_id', userData.tenant_id),
-      supabase
+  useEffect(() => {
+    fetchDashboardData();
+  }, []);
+
+  const fetchDashboardData = async () => {
+    try {
+      const supabase = createClient();
+
+      // 基本統計を取得
+      const [
+        { count: viewersCount },
+        { count: accessLogsCount },
+        { count: casesCount },
+        { count: inquiriesCount }
+      ] = await Promise.all([
+        supabase.from('viewers').select('*', { count: 'exact', head: true }),
+        supabase.from('access_logs').select('*', { count: 'exact', head: true }),
+        supabase.from('construction_cases').select('*', { count: 'exact', head: true }),
+        supabase.from('inquiries').select('*', { count: 'exact', head: true })
+      ]);
+
+      // 最近の閲覧者を取得
+      const { data: recentViewers } = await supabase
         .from('viewers')
-        .select('id')
-        .eq('tenant_id', userData.tenant_id),
-      supabase
-        .from('inquiries')
-        .select('id')
-        .eq('tenant_id', userData.tenant_id),
-      supabase
-        .from('ai_questions')
-        .select('id')
-        .eq('tenant_id', userData.tenant_id),
-      supabase
-        .from('ai_questions')
         .select(`
-          id,
-          case_id,
-          question,
-          answer,
-          model_used,
-          created_at,
-          construction_cases (name)
+          *,
+          construction_cases(name),
+          tenants(name)
         `)
-        .eq('tenant_id', userData.tenant_id)
         .order('created_at', { ascending: false })
-        .limit(10)
-    ]);
+        .limit(5);
 
-    // エラーチェック
-    if (casesResult.error) throw new Error(`事例データの取得に失敗: ${casesResult.error.message}`);
-    if (viewersResult.error) throw new Error(`閲覧者データの取得に失敗: ${viewersResult.error.message}`);
-    if (inquiriesResult.error) throw new Error(`問い合わせデータの取得に失敗: ${inquiriesResult.error.message}`);
-    if (aiQuestionsCountResult.error) throw new Error(`AI質問数の取得に失敗: ${aiQuestionsCountResult.error.message}`);
-    if (aiQuestionsDetailResult.error) throw new Error(`AI質問履歴の取得に失敗: ${aiQuestionsDetailResult.error.message}`);
-    
-    // 型変換を行い、model_usedをmodelにマッピング
-    const aiQuestions = aiQuestionsDetailResult.data ? aiQuestionsDetailResult.data.map((item: any) => ({
-      id: item.id,
-      case_id: item.case_id,
-      question: item.question,
-      answer: item.answer,
-      model: item.model_used, // model_usedをmodelにマッピング
-      created_at: item.created_at,
-      construction_cases: item.construction_cases
-    })) : [];
-    
-    const stats = {
-      totalCases: casesResult.data?.length || 0,
-      publishedCases: casesResult.data?.filter((c: any) => c.is_published)?.length || 0,
-      totalViews: viewersResult.data?.length || 0,
-      totalInquiries: inquiriesResult.data?.length || 0,
-      totalAiQuestions: aiQuestionsCountResult.data?.length || 0
-    };
+      // 人気事例を取得（アクセス数順）
+      const { data: topCases } = await supabase
+        .from('construction_cases')
+        .select(`
+          *,
+          access_logs(count),
+          tenants(name)
+        `)
+        .order('created_at', { ascending: false })
+        .limit(5);
 
-    // 現在の日時を取得
-    const currentDate = new Date().toLocaleDateString('ja-JP', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      weekday: 'long'
-    });
-    
+      // 最近のアクティビティを取得
+      const { data: recentActivities } = await supabase
+        .from('access_logs')
+        .select(`
+          *,
+          viewers(company_name, full_name),
+          construction_cases(name),
+          tenants(name)
+        `)
+        .order('accessed_at', { ascending: false })
+        .limit(10);
+
+      setStats({
+        totalViewers: viewersCount || 0,
+        totalAccessLogs: accessLogsCount || 0,
+        totalCases: casesCount || 0,
+        totalInquiries: inquiriesCount || 0,
+        recentViewers: recentViewers || [],
+        topCases: topCases || [],
+        recentActivities: recentActivities || []
+      });
+    } catch (error) {
+      console.error('ダッシュボードデータ取得エラー:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-white">
-        {/* ヘッダーセクション */}
-        <div className="sticky top-0 z-10 bg-white/80 backdrop-blur-sm border-b border-gray-200">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex items-center justify-between h-16">
-              <div className="flex items-center space-x-4">
-                <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg">
-                  <TrendingUp className="w-6 h-6 text-white" />
-                </div>
-                <div>
-                  <h1 className="text-xl font-bold text-gray-900">ダッシュボード</h1>
-                  <p className="text-sm text-gray-500">{currentDate}</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* メインコンテンツ */}
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          {/* ウェルカムカード */}
-          <div className="mb-8">
-            <div className="bg-gradient-to-r from-blue-500 to-purple-600 rounded-2xl p-6 text-white shadow-xl">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-4">
-                  <div className="w-16 h-16 bg-white/20 rounded-xl flex items-center justify-center backdrop-blur-sm">
-                    <Building2 className="w-8 h-8 text-white" />
-                  </div>
-                  <div>
-                    <h2 className="text-2xl font-bold">
-                      {userData.tenants?.name || '会社名未設定'}
-                    </h2>
-                    <p className="text-blue-100 flex items-center mt-1">
-                      <User className="w-4 h-4 mr-2" />
-                      {session.user.email}
-                    </p>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <div className="flex items-center text-blue-100 mb-1">
-                    <Calendar className="w-4 h-4 mr-2" />
-                    <span className="text-sm">最終ログイン</span>
-                  </div>
-                  <p className="text-lg font-semibold">
-                    {new Date().toLocaleDateString('ja-JP')}
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* リアルタイムダッシュボード */}
-          <RealtimeDashboard 
-            initialStats={stats}
-            initialAiQuestions={aiQuestions}
-            tenantId={userData.tenant_id}
-          />
-        </div>
-      </div>
-    );
-  } catch (error) {
-    console.error('ダッシュボードの初期化に失敗:', error);
-    
-    // エラーページを表示
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="max-w-md w-full bg-white rounded-lg shadow-lg p-6">
-          <div className="text-center">
-            <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <TrendingUp className="w-8 h-8 text-red-600" />
-            </div>
-            <h2 className="text-xl font-bold text-gray-900 mb-2">
-              データの読み込みに失敗しました
-            </h2>
-            <p className="text-gray-600 mb-4">
-              しばらく時間をおいてから再度お試しください。
-            </p>
-            <button 
-              onClick={() => window.location.reload()}
-              className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              再読み込み
-            </button>
-          </div>
-        </div>
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600"></div>
       </div>
     );
   }
+
+  return (
+    <div className="space-y-8">
+      {/* ヘッダー */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">営業ダッシュボード</h1>
+          <p className="text-gray-600 mt-2">施工事例の閲覧状況と営業活動の概要</p>
+        </div>
+        <div className="flex space-x-4">
+          <Button asChild>
+            <Link href="/cases/new">
+              <FileText className="w-4 h-4 mr-2" />
+              新規事例追加
+            </Link>
+          </Button>
+        </div>
+      </div>
+
+      {/* KPI カード */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium text-blue-700">総閲覧者数</CardTitle>
+            <Users className="h-4 w-4 text-blue-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-blue-900">{stats.totalViewers}</div>
+            <p className="text-xs text-blue-600 flex items-center mt-1">
+              <TrendingUp className="w-3 h-3 mr-1" />
+              見込み客の数
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium text-green-700">総アクセス数</CardTitle>
+            <Eye className="h-4 w-4 text-green-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-green-900">{stats.totalAccessLogs}</div>
+            <p className="text-xs text-green-600 flex items-center mt-1">
+              <TrendingUp className="w-3 h-3 mr-1" />
+              事例閲覧回数
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium text-purple-700">公開事例数</CardTitle>
+            <FileText className="h-4 w-4 text-purple-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-purple-900">{stats.totalCases}</div>
+            <p className="text-xs text-purple-600 flex items-center mt-1">
+              <Building2 className="w-3 h-3 mr-1" />
+              営業資料
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-gradient-to-br from-orange-50 to-orange-100 border-orange-200">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium text-orange-700">問い合わせ数</CardTitle>
+            <MessageSquare className="h-4 w-4 text-orange-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-orange-900">{stats.totalInquiries}</div>
+            <p className="text-xs text-orange-600 flex items-center mt-1">
+              <Target className="w-3 h-3 mr-1" />
+              商談機会
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        {/* 最近の閲覧者 */}
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle className="text-lg font-semibold">最近の閲覧者</CardTitle>
+            <Button variant="outline" size="sm" asChild>
+              <Link href="/leads">
+                すべて見る
+                <ArrowUpRight className="w-4 h-4 ml-1" />
+              </Link>
+            </Button>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {stats.recentViewers.length > 0 ? (
+                stats.recentViewers.map((viewer) => (
+                  <div key={viewer.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                    <div className="flex-1">
+                      <div className="font-medium text-gray-900">{viewer.full_name}</div>
+                      <div className="text-sm text-gray-600">{viewer.company_name}</div>
+                      <div className="text-xs text-gray-500">
+                        {viewer.construction_cases?.name} - {viewer.tenants?.name}
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-xs text-gray-500">
+                        {formatDistanceToNow(new Date(viewer.created_at), { 
+                          addSuffix: true, 
+                          locale: ja 
+                        })}
+                      </div>
+                      <Badge variant="outline" className="mt-1">
+                        {viewer.position}
+                      </Badge>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <p className="text-gray-500 text-center py-4">閲覧者がまだいません</p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* 最近のアクティビティ */}
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle className="text-lg font-semibold">最近のアクティビティ</CardTitle>
+            <Button variant="outline" size="sm" asChild>
+              <Link href="/analytics">
+                詳細分析
+                <ArrowUpRight className="w-4 h-4 ml-1" />
+              </Link>
+            </Button>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {stats.recentActivities.length > 0 ? (
+                stats.recentActivities.map((activity) => (
+                  <div key={activity.id} className="flex items-start space-x-3 p-2 hover:bg-gray-50 rounded-lg">
+                    <div className="flex-shrink-0">
+                      <Eye className="w-4 h-4 text-blue-600 mt-1" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium text-gray-900">
+                        {activity.viewers?.company_name} - {activity.viewers?.full_name}
+                      </div>
+                      <div className="text-sm text-gray-600">
+                        「{activity.construction_cases?.name}」を閲覧
+                      </div>
+                      <div className="text-xs text-gray-500 flex items-center mt-1">
+                        <Clock className="w-3 h-3 mr-1" />
+                        {formatDistanceToNow(new Date(activity.accessed_at), { 
+                          addSuffix: true, 
+                          locale: ja 
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <p className="text-gray-500 text-center py-4">アクティビティがまだありません</p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* 人気事例 */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle className="text-lg font-semibold">人気の施工事例</CardTitle>
+          <Button variant="outline" size="sm" asChild>
+            <Link href="/cases">
+              事例管理
+              <ArrowUpRight className="w-4 h-4 ml-1" />
+            </Link>
+          </Button>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {stats.topCases.length > 0 ? (
+              stats.topCases.map((caseItem) => (
+                <div key={caseItem.id} className="p-4 border border-gray-200 rounded-lg hover:shadow-md transition-shadow">
+                  <div className="flex items-start justify-between mb-2">
+                    <h3 className="font-medium text-gray-900 line-clamp-2">{caseItem.name}</h3>
+                    <Badge variant="secondary">
+                      {Array.isArray(caseItem.access_logs) ? caseItem.access_logs.length : 0} 回
+                    </Badge>
+                  </div>
+                  <p className="text-sm text-gray-600 mb-2">{caseItem.tenants?.name}</p>
+                  <div className="text-xs text-gray-500">
+                    作成: {formatDistanceToNow(new Date(caseItem.created_at), { 
+                      addSuffix: true, 
+                      locale: ja 
+                    })}
+                  </div>
+                </div>
+              ))
+            ) : (
+              <p className="text-gray-500 text-center py-4 col-span-full">事例がまだありません</p>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
 }

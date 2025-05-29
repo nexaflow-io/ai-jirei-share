@@ -13,7 +13,15 @@ import {
   Menu, 
   X,
   Building2,
-  User
+  User,
+  BarChart3,
+  Users,
+  Eye,
+  Bot,
+  Shield,
+  TrendingUp,
+  Bell,
+  Target
 } from 'lucide-react';
 
 export default function DashboardLayout({
@@ -34,25 +42,64 @@ export default function DashboardLayout({
       name: 'ダッシュボード', 
       href: '/dashboard', 
       icon: LayoutDashboard,
-      description: '概要とアナリティクス'
+      description: '営業状況の概要',
+      category: 'main'
+    },
+    { 
+      name: 'リード管理', 
+      href: '/leads', 
+      icon: Target,
+      description: '見込み客の管理',
+      category: 'sales'
+    },
+    { 
+      name: '閲覧者分析', 
+      href: '/viewer-analysis', 
+      icon: BarChart3,
+      description: 'アクセス解析',
+      category: 'sales'
     },
     { 
       name: '事例管理', 
       href: '/cases', 
       icon: FileText,
-      description: '施工事例の管理'
+      description: '施工事例の管理',
+      category: 'content'
+    },
+    { 
+      name: 'AI質問履歴', 
+      href: '/ai-questions', 
+      icon: Bot,
+      description: 'AI質問の分析',
+      category: 'content'
     },
     { 
       name: '問い合わせ', 
       href: '/inquiries', 
       icon: MessageSquare,
-      description: 'お客様からの問い合わせ'
+      description: 'お客様からの問い合わせ',
+      category: 'communication'
+    },
+    { 
+      name: '通知設定', 
+      href: '/notifications', 
+      icon: Bell,
+      description: '通知の設定',
+      category: 'communication'
     },
     { 
       name: '設定', 
       href: '/settings', 
       icon: Settings,
-      description: 'アカウント設定'
+      description: 'システム設定',
+      category: 'system'
+    },
+    { 
+      name: 'セキュリティ', 
+      href: '/security-test', 
+      icon: Shield,
+      description: 'セキュリティテスト',
+      category: 'system'
     },
   ];
 
@@ -95,7 +142,125 @@ export default function DashboardLayout({
 
             {/* ナビゲーション */}
             <nav className="flex-1 px-4 py-6 space-y-2">
-              {navItems.map((item) => {
+              <div className="text-lg font-bold mb-2">メイン</div>
+              {navItems.filter(item => item.category === 'main').map((item) => {
+                const Icon = item.icon;
+                const isActive = pathname.startsWith(item.href);
+                
+                return (
+                  <Link
+                    key={item.name}
+                    href={item.href}
+                    className={`group flex items-center px-4 py-3 text-sm font-medium rounded-xl transition-all duration-200 ${
+                      isActive
+                        ? 'bg-gradient-to-r from-blue-50 to-indigo-50 text-blue-700 border border-blue-200 shadow-sm'
+                        : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                    }`}
+                  >
+                    <Icon className={`mr-3 h-5 w-5 transition-colors ${
+                      isActive ? 'text-blue-600' : 'text-gray-400 group-hover:text-gray-600'
+                    }`} />
+                    <div className="flex-1">
+                      <div className="font-medium">{item.name}</div>
+                      <div className={`text-xs ${
+                        isActive ? 'text-blue-600' : 'text-gray-400'
+                      }`}>
+                        {item.description}
+                      </div>
+                    </div>
+                  </Link>
+                );
+              })}
+              <div className="text-lg font-bold mb-2 mt-4">営業支援</div>
+              <div className="text-base font-bold mb-2">リード管理</div>
+              {navItems.filter(item => item.category === 'sales').map((item) => {
+                const Icon = item.icon;
+                const isActive = pathname.startsWith(item.href);
+                
+                return (
+                  <Link
+                    key={item.name}
+                    href={item.href}
+                    className={`group flex items-center px-4 py-3 text-sm font-medium rounded-xl transition-all duration-200 ${
+                      isActive
+                        ? 'bg-gradient-to-r from-blue-50 to-indigo-50 text-blue-700 border border-blue-200 shadow-sm'
+                        : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                    }`}
+                  >
+                    <Icon className={`mr-3 h-5 w-5 transition-colors ${
+                      isActive ? 'text-blue-600' : 'text-gray-400 group-hover:text-gray-600'
+                    }`} />
+                    <div className="flex-1">
+                      <div className="font-medium">{item.name}</div>
+                      <div className={`text-xs ${
+                        isActive ? 'text-blue-600' : 'text-gray-400'
+                      }`}>
+                        {item.description}
+                      </div>
+                    </div>
+                  </Link>
+                );
+              })}
+              <div className="text-base font-bold mb-2 mt-2">コンテンツ管理</div>
+              {navItems.filter(item => item.category === 'content').map((item) => {
+                const Icon = item.icon;
+                const isActive = pathname.startsWith(item.href);
+                
+                return (
+                  <Link
+                    key={item.name}
+                    href={item.href}
+                    className={`group flex items-center px-4 py-3 text-sm font-medium rounded-xl transition-all duration-200 ${
+                      isActive
+                        ? 'bg-gradient-to-r from-blue-50 to-indigo-50 text-blue-700 border border-blue-200 shadow-sm'
+                        : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                    }`}
+                  >
+                    <Icon className={`mr-3 h-5 w-5 transition-colors ${
+                      isActive ? 'text-blue-600' : 'text-gray-400 group-hover:text-gray-600'
+                    }`} />
+                    <div className="flex-1">
+                      <div className="font-medium">{item.name}</div>
+                      <div className={`text-xs ${
+                        isActive ? 'text-blue-600' : 'text-gray-400'
+                      }`}>
+                        {item.description}
+                      </div>
+                    </div>
+                  </Link>
+                );
+              })}
+              <div className="text-base font-bold mb-2 mt-2">コミュニケーション</div>
+              {navItems.filter(item => item.category === 'communication').map((item) => {
+                const Icon = item.icon;
+                const isActive = pathname.startsWith(item.href);
+                
+                return (
+                  <Link
+                    key={item.name}
+                    href={item.href}
+                    className={`group flex items-center px-4 py-3 text-sm font-medium rounded-xl transition-all duration-200 ${
+                      isActive
+                        ? 'bg-gradient-to-r from-blue-50 to-indigo-50 text-blue-700 border border-blue-200 shadow-sm'
+                        : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                    }`}
+                  >
+                    <Icon className={`mr-3 h-5 w-5 transition-colors ${
+                      isActive ? 'text-blue-600' : 'text-gray-400 group-hover:text-gray-600'
+                    }`} />
+                    <div className="flex-1">
+                      <div className="font-medium">{item.name}</div>
+                      <div className={`text-xs ${
+                        isActive ? 'text-blue-600' : 'text-gray-400'
+                      }`}>
+                        {item.description}
+                      </div>
+                    </div>
+                  </Link>
+                );
+              })}
+              <div className="text-base font-bold mb-2 mt-2">システム</div>
+              {navItems.filter(item => item.category === 'system').map((item) => {
                 const Icon = item.icon;
                 const isActive = pathname.startsWith(item.href);
                 
@@ -175,7 +340,129 @@ export default function DashboardLayout({
 
               {/* モバイルナビゲーション */}
               <nav className="flex-1 px-4 py-6 space-y-2 overflow-y-auto">
-                {navItems.map((item) => {
+                <div className="text-lg font-bold mb-2">メイン</div>
+                {navItems.filter(item => item.category === 'main').map((item) => {
+                  const Icon = item.icon;
+                  const isActive = pathname.startsWith(item.href);
+                  
+                  return (
+                    <Link
+                      key={item.name}
+                      href={item.href}
+                      className={`group flex items-center px-4 py-3 text-sm font-medium rounded-xl transition-all duration-200 ${
+                        isActive
+                          ? 'bg-gradient-to-r from-blue-50 to-indigo-50 text-blue-700 border border-blue-200'
+                          : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                      }`}
+                      onClick={() => setIsMobileMenuOpen(false)}
+                    >
+                      <Icon className={`mr-3 h-5 w-5 ${
+                        isActive ? 'text-blue-600' : 'text-gray-400'
+                      }`} />
+                      <div>
+                        <div className="font-medium">{item.name}</div>
+                        <div className={`text-xs ${
+                          isActive ? 'text-blue-600' : 'text-gray-400'
+                        }`}>
+                          {item.description}
+                        </div>
+                      </div>
+                    </Link>
+                  );
+                })}
+                <div className="text-lg font-bold mb-2 mt-4">営業支援</div>
+                <div className="text-base font-bold mb-2">リード管理</div>
+                {navItems.filter(item => item.category === 'sales').map((item) => {
+                  const Icon = item.icon;
+                  const isActive = pathname.startsWith(item.href);
+                  
+                  return (
+                    <Link
+                      key={item.name}
+                      href={item.href}
+                      className={`group flex items-center px-4 py-3 text-sm font-medium rounded-xl transition-all duration-200 ${
+                        isActive
+                          ? 'bg-gradient-to-r from-blue-50 to-indigo-50 text-blue-700 border border-blue-200'
+                          : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                      }`}
+                      onClick={() => setIsMobileMenuOpen(false)}
+                    >
+                      <Icon className={`mr-3 h-5 w-5 ${
+                        isActive ? 'text-blue-600' : 'text-gray-400'
+                      }`} />
+                      <div>
+                        <div className="font-medium">{item.name}</div>
+                        <div className={`text-xs ${
+                          isActive ? 'text-blue-600' : 'text-gray-400'
+                        }`}>
+                          {item.description}
+                        </div>
+                      </div>
+                    </Link>
+                  );
+                })}
+                <div className="text-base font-bold mb-2 mt-2">コンテンツ管理</div>
+                {navItems.filter(item => item.category === 'content').map((item) => {
+                  const Icon = item.icon;
+                  const isActive = pathname.startsWith(item.href);
+                  
+                  return (
+                    <Link
+                      key={item.name}
+                      href={item.href}
+                      className={`group flex items-center px-4 py-3 text-sm font-medium rounded-xl transition-all duration-200 ${
+                        isActive
+                          ? 'bg-gradient-to-r from-blue-50 to-indigo-50 text-blue-700 border border-blue-200'
+                          : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                      }`}
+                      onClick={() => setIsMobileMenuOpen(false)}
+                    >
+                      <Icon className={`mr-3 h-5 w-5 ${
+                        isActive ? 'text-blue-600' : 'text-gray-400'
+                      }`} />
+                      <div>
+                        <div className="font-medium">{item.name}</div>
+                        <div className={`text-xs ${
+                          isActive ? 'text-blue-600' : 'text-gray-400'
+                        }`}>
+                          {item.description}
+                        </div>
+                      </div>
+                    </Link>
+                  );
+                })}
+                <div className="text-base font-bold mb-2 mt-2">コミュニケーション</div>
+                {navItems.filter(item => item.category === 'communication').map((item) => {
+                  const Icon = item.icon;
+                  const isActive = pathname.startsWith(item.href);
+                  
+                  return (
+                    <Link
+                      key={item.name}
+                      href={item.href}
+                      className={`group flex items-center px-4 py-3 text-sm font-medium rounded-xl transition-all duration-200 ${
+                        isActive
+                          ? 'bg-gradient-to-r from-blue-50 to-indigo-50 text-blue-700 border border-blue-200'
+                          : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                      }`}
+                      onClick={() => setIsMobileMenuOpen(false)}
+                    >
+                      <Icon className={`mr-3 h-5 w-5 ${
+                        isActive ? 'text-blue-600' : 'text-gray-400'
+                      }`} />
+                      <div>
+                        <div className="font-medium">{item.name}</div>
+                        <div className={`text-xs ${
+                          isActive ? 'text-blue-600' : 'text-gray-400'
+                        }`}>
+                          {item.description}
+                        </div>
+                      </div>
+                    </Link>
+                  );
+                })}
+                <div className="text-base font-bold mb-2 mt-2">システム</div>
+                {navItems.filter(item => item.category === 'system').map((item) => {
                   const Icon = item.icon;
                   const isActive = pathname.startsWith(item.href);
                   
