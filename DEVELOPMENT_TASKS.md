@@ -56,14 +56,20 @@
 ### ✅ 1-3. データベース設計（1時間）
 - [ ] テーブル設計・作成
   - [ ] `tenants` (施工会社)
+  - [ ] `users` (テナントに所属するユーザー・従業員)
   - [ ] `construction_cases` (事例)
   - [ ] `case_images` (事例画像)
-  - [ ] `viewers` (閲覧者)
+  - [ ] `viewers` (閲覧者・元請け)
   - [ ] `access_logs` (アクセスログ)
   - [ ] `ai_questions` (AI質問)
   - [ ] `inquiries` (問い合わせ)
-- [ ] RLS ポリシー設定
+- [ ] RLS ポリシー設定（テナント分離）
 - [ ] 初期データ投入
+
+**マルチテナント設計詳細**:
+- **1テナント = 1施工会社**
+- **テナント管理者 = 施工会社の代表者**
+- **テナントメンバー = 施工会社の従業員**（MVP では1人のみ）
 
 ---
 
@@ -191,6 +197,96 @@
 ---
 
 ## 📝 技術詳細メモ
+
+### データベース設計詳細
+```sql
+-- 🏢 Tenants table (施工会社)
+CREATE TABLE tenants (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  name TEXT NOT NULL, -- 会社名
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- 👤 Users table (テナントに所属するユーザー・従業員)
+CREATE TABLE users (
+  id UUID REFERENCES auth.users(id) PRIMARY KEY,
+  tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
+  email TEXT NOT NULL,
+  role TEXT DEFAULT 'admin', -- admin のみ（MVP）
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- 🏗️ Construction Cases table (事例)
+CREATE TABLE construction_cases (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
+  user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+  name TEXT NOT NULL, -- 工事名
+  description TEXT, -- 課題・問題点
+  solution TEXT, -- 工夫・解決策
+  result TEXT, -- 結果・成果
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- 📸 Case Images table (事例画像)
+CREATE TABLE case_images (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  case_id UUID REFERENCES construction_cases(id) ON DELETE CASCADE,
+  image_url TEXT NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- 👥 Viewers table (閲覧者・元請け)
+CREATE TABLE viewers (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  case_id UUID REFERENCES construction_cases(id) ON DELETE CASCADE,
+  company_name TEXT NOT NULL,
+  position TEXT NOT NULL,
+  name TEXT NOT NULL,
+  email TEXT NOT NULL,
+  phone TEXT NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- 📊 Access Logs table (アクセスログ)
+CREATE TABLE access_logs (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  case_id UUID REFERENCES construction_cases(id) ON DELETE CASCADE,
+  viewer_id UUID REFERENCES viewers(id) ON DELETE CASCADE,
+  accessed_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- 💬 AI Questions table (軽い質問・トラッキング用)
+CREATE TABLE ai_questions (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  case_id UUID REFERENCES construction_cases(id) ON DELETE CASCADE,
+  viewer_id UUID REFERENCES viewers(id) ON DELETE CASCADE,
+  question TEXT NOT NULL,
+  answer TEXT NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- 📞 Inquiries table (問い合わせ・CV導線)
+CREATE TABLE inquiries (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  case_id UUID REFERENCES construction_cases(id) ON DELETE CASCADE,
+  viewer_id UUID REFERENCES viewers(id) ON DELETE CASCADE,
+  subject TEXT NOT NULL,
+  message TEXT NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- 🔒 RLS ポリシー（テナント分離）
+CREATE POLICY "Users can only access own tenant data" ON construction_cases 
+FOR ALL USING (
+  tenant_id = (
+    SELECT tenant_id FROM users WHERE id = auth.uid()
+  )
+);
+```
 
 ### 必須パッケージ
 ```json
