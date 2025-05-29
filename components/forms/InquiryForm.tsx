@@ -54,20 +54,27 @@ export function InquiryForm({ caseId, caseName, tenantId, tenantName }: InquiryF
       setIsSubmitting(true);
       setError(null);
 
-      // お問い合わせデータを保存
-      const { error: insertError } = await supabase
-        .from('inquiries')
-        .insert({
-          case_id: caseId,
-          tenant_id: tenantId,
-          viewer_id: crypto.randomUUID(), // 仮のviewer_idを生成
-          subject: `${caseName}に関するお問い合わせ`,
-          message: `お名前: ${data.name}\n会社名: ${data.company}\nメール: ${data.email}\n電話番号: ${data.phone}\n\n${data.message}`,
-          status: 'new'
-        });
+      // APIエンドポイントを使用して問い合わせを送信
+      const response = await fetch('/api/inquiry', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          caseId,
+          tenantId,
+          name: data.name,
+          company: data.company,
+          email: data.email,
+          phone: data.phone,
+          message: data.message
+        }),
+      });
 
-      if (insertError) {
-        throw insertError;
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || '問い合わせの送信に失敗しました');
       }
 
       // 送信成功
