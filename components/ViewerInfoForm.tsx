@@ -79,15 +79,19 @@ export function ViewerInfoForm({ caseId, tenantId, onComplete }: ViewerInfoFormP
       }));
       
       // アクセスログを記録
-      await supabase
-        .from('access_logs')
-        .insert({
-          case_id: caseId,
-          viewer_id: viewerData.id,
-          tenant_id: tenantId,
-          user_agent: navigator.userAgent,
-          ip_address: 'client-side', // 実際のIPはサーバー側で取得
-        });
+      try {
+        await supabase
+          .from('access_logs')
+          .insert({
+            case_id: caseId,
+            viewer_id: viewerData.id,
+            tenant_id: tenantId,
+            referer: window.location.href,
+          });
+      } catch (logError) {
+        console.error('アクセスログ記録エラー:', logError);
+        // アクセスログの記録に失敗しても処理を続行
+      }
       
       // 完了通知
       onComplete();
