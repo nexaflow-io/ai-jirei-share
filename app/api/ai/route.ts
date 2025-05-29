@@ -1,26 +1,17 @@
-import { createServerClient } from '@/lib/supabase/server';
-import { openai, createPrompt } from '@/lib/openai';
-import { NextRequest } from 'next/server';
-import { addDays } from 'date-fns';
+import { NextRequest, NextResponse } from 'next/server';
 import { streamText } from 'ai';
-import { openai as vercelOpenAI } from '@ai-sdk/openai';
-
-// キャッシュ無効化
-export const dynamic = 'force-dynamic';
-export const revalidate = 0;
-
+import { openai } from '@ai-sdk/openai';
+import { createAdminClient } from '@/lib/supabase/server';
 import { 
   PromptInjectionFilter, 
   OutputValidator, 
   HITLController,
-  createStructuredPrompt,
   generateSecureSystemPrompt
 } from '@/lib/prompt-security';
 
-// セキュリティクラスのインスタンス化
-const injectionFilter = new PromptInjectionFilter();
-const outputValidator = new OutputValidator();
-const hitlController = new HITLController();
+// キャッシュ無効化
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 export async function POST(req: NextRequest) {
   try {
@@ -72,7 +63,7 @@ export async function POST(req: NextRequest) {
     }
 
     // セキュリティチェック1: プロンプトインジェクション検出
-    if (injectionFilter.detectInjection(question)) {
+    if (new PromptInjectionFilter().detectInjection(question)) {
       console.warn('プロンプトインジェクション攻撃を検出:', { 
         question: question.substring(0, 100),
         viewerId,
@@ -92,7 +83,7 @@ export async function POST(req: NextRequest) {
     }
 
     // セキュリティチェック2: 高リスクコンテンツ検出
-    if (injectionFilter.detectHighRisk(question)) {
+    if (new PromptInjectionFilter().detectHighRisk(question)) {
       console.warn('高リスクコンテンツを検出:', { 
         question: question.substring(0, 100),
         viewerId,
@@ -112,7 +103,7 @@ export async function POST(req: NextRequest) {
     }
 
     // セキュリティチェック3: 人間による承認が必要かチェック
-    if (hitlController.requiresApproval(question)) {
+    if (new HITLController().requiresApproval(question)) {
       console.warn('人間による承認が必要:', { 
         question: question.substring(0, 100),
         viewerId,
@@ -122,7 +113,7 @@ export async function POST(req: NextRequest) {
       
       return new Response(
         JSON.stringify({ 
-          error: hitlController.getApprovalMessage()
+          error: new HITLController().getApprovalMessage()
         }),
         { 
           status: 202,
@@ -132,13 +123,13 @@ export async function POST(req: NextRequest) {
     }
 
     // 入力をサニタイズ
-    const sanitizedQuestion = injectionFilter.sanitizeInput(question);
+    const sanitizedQuestion = new PromptInjectionFilter().sanitizeInput(question);
     
     // Base64エンコーディングをチェック・デコード
-    const processedQuestion = injectionFilter.detectAndDecodeBase64(sanitizedQuestion);
+    const processedQuestion = new PromptInjectionFilter().detectAndDecodeBase64(sanitizedQuestion);
 
     // Supabaseクライアントを作成
-    const supabase = createServerClient();
+    const supabase = createAdminClient();
 
     // caseIdが"general"の場合は事例集全体への質問として処理
     if (caseId === 'general') {
@@ -241,25 +232,43 @@ ${casesContext}
 
       // Vercel AI SDKを使用してストリーミングレスポンスを生成
       const result = await streamText({
-        model: vercelOpenAI('gpt-4o-mini'),
+        model: openai('gpt-4o-mini'),
         messages: chatMessages,
         temperature: 0.7,
         maxTokens: 1000,
         onFinish: async (result) => {
-          // AI質問をデータベースに保存（事例集用）
+          console.log('AI応答完了 - 保存処理開始:', {
+            viewerId,
+            tenantId,
+            hasResult: !!result.text,
+            resultLength: result.text?.length || 0
+          });
+          
           if (viewerId && result.text) {
             try {
-              await supabase.from('ai_questions').insert({
+              const insertData = {
                 case_id: '00000000-0000-0000-0000-000000000000', // 事例集全体への質問を示す特別なUUID
                 tenant_id: tenantId,
                 viewer_id: viewerId,
                 question: processedQuestion,
                 answer: result.text,
                 model_used: 'gpt-4o-mini',
-              });
+              };
+              
+              console.log('AI質問保存データ:', insertData);
+              
+              const { data, error } = await supabase.from('ai_questions').insert(insertData);
+              
+              if (error) {
+                console.error('AI質問保存エラー:', error);
+              } else {
+                console.log('AI質問保存成功:', data);
+              }
             } catch (error) {
               console.error('AI質問の保存に失敗しました:', error);
             }
+          } else {
+            console.warn('AI質問保存スキップ:', { viewerId, hasResult: !!result.text });
           }
         },
       });
@@ -410,15 +419,10 @@ ${casesContext}
     );
 
     // 構造化プロンプトを作成
-    const structuredPrompt = createStructuredPrompt(
-      secureSystemPrompt,
-      processedQuestion
-    );
-
     const finalMessages = [
       { 
         role: 'system' as const, 
-        content: structuredPrompt
+        content: secureSystemPrompt
       },
       ...(messages || []),
       { 
@@ -428,14 +432,14 @@ ${casesContext}
     ];
 
     const result = await streamText({
-      model: vercelOpenAI('gpt-4o-mini'),
+      model: openai('gpt-4o-mini'),
       messages: finalMessages,
       maxTokens: 1000,
       temperature: 0.3,
       onFinish: async (result) => {
         try {
           // 出力を検証・フィルタリング
-          const filteredResponse = outputValidator.filterResponse(result.text);
+          const filteredResponse = new OutputValidator().filterResponse(result.text);
           
           // セキュリティログ
           if (filteredResponse !== result.text) {
@@ -449,14 +453,39 @@ ${casesContext}
           }
 
           // データベースに保存
-          await supabase.from('ai_questions').insert({
-            case_id: caseId,
-            tenant_id: currentCase.tenant_id,
-            viewer_id: viewerId,
-            question: processedQuestion,
-            answer: filteredResponse,
-            model_used: 'gpt-4o-mini',
+          console.log('AI応答完了 - 保存処理開始:', {
+            viewerId,
+            caseId,
+            hasResult: !!result.text,
+            resultLength: result.text?.length || 0
           });
+          
+          if (viewerId && result.text) {
+            try {
+              const insertData = {
+                case_id: caseId,
+                tenant_id: currentCase.tenant_id,
+                viewer_id: viewerId,
+                question: processedQuestion,
+                answer: filteredResponse,
+                model_used: 'gpt-4o-mini',
+              };
+              
+              console.log('AI質問保存データ:', insertData);
+              
+              const { data, error } = await supabase.from('ai_questions').insert(insertData);
+              
+              if (error) {
+                console.error('AI質問保存エラー:', error);
+              } else {
+                console.log('AI質問保存成功:', data);
+              }
+            } catch (error) {
+              console.error('AI質問の保存に失敗しました:', error);
+            }
+          } else {
+            console.warn('AI質問保存スキップ:', { viewerId, hasResult: !!result.text });
+          }
         } catch (error) {
           console.error('AI質問の保存に失敗しました:', error);
         }
