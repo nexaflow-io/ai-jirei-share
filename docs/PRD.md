@@ -25,12 +25,16 @@
 ### 👉 実装済み機能
 - ✅ **スクロール追跡**: 閲覧者のスクロール位置を追跡する機能
 - ✅ **AI質問機能**: Vercel AI SDKを使用したAI質問機能
+- ✅ **AI質問保存機能**: AI質問・回答をSupabaseに自動保存
+- ✅ **AI質問履歴表示**: ダッシュボードでAI質問履歴を表示
 - ✅ **メール送信機能**: Resendを使用した問い合わせ通知メール送信
 - ✅ **画像アップロード機能**: Supabase Storageを使用した画像アップロード
 - ✅ **事例集表示機能**: 全事例が一覧で見られる事例集ページ
 - ✅ **閲覧者情報入力フォーム**: 事例集閲覧前の個人情報入力必須機能
 - ✅ **ダッシュボード機能**: 統計情報と閲覧者一覧の表示
 - ✅ **閲覧者一覧機能**: 詳細なトラッキング情報と営業支援機能
+- ✅ **セキュリティ機能**: プロンプトインジェクション対策実装とRLS実装
+- ✅ **Markdownレンダリング**: AI回答の美しい表示機能
 
 ### 👉 次に実装する機能
 - 🟡 **リアルタイム通知機能**: 問い合わせ時の即座な通知
@@ -117,13 +121,25 @@
 
 #### 2.5.1 軽い質問（AIチャット）
 - **機能**: 元請けが事例に関する軽い質問をAIに投稿
+- **質問タイプ**:
+  - **個別事例への質問**: 特定の事例に関する詳細質問
+  - **事例集全体への質問**: 施工会社の全体的な技術・実績に関する質問
 - **質問例**:
   - うちの案件でも同じ工法でできる？
   - 工期はどのくらい？
   - この工法の耐用年数は？
+  - 施工事例について教えてください
 - **技術**: Vercel AI SDK + OpenAI GPT-4o-mini
 - **実装**: `useChat`フック + ストリーミング回答
-- **記録**: ai_questions テーブル（トラッキング用）
+- **保存機能**: 
+  - ai_questions テーブルに自動保存
+  - 個別事例: case_id設定、事例集全体: case_id=NULL
+  - テナント別データ分離（RLS実装）
+- **表示機能**:
+  - Markdownレンダリング対応
+  - ダッシュボードで履歴表示
+  - 事例別・全体別の区別表示
+- **セキュリティ**: プロンプトインジェクション対策実装
 - **📧 メール送信**: なし（施工会社はダッシュボードで確認）
 
 #### 2.5.2 問い合わせ（CV導線）
@@ -258,9 +274,26 @@
   "upload": "react-dropzone",
   "charts": "recharts (最も人気・簡単導入)",
   "dates": "date-fns",
-  "data": "@tanstack/react-query"
+  "data": "@tanstack/react-query",
+  "markdown": "react-markdown + remark-gfm",
+  "security": "プロンプトインジェクション対策実装"
 }
 ```
+
+### 🔒 6.3 セキュリティ機能
+| 機能 | 実装内容 | 目的 |
+|------|----------|------|
+| **プロンプトインジェクション対策** | 入力検証・フィルタリング | AI質問の悪用防止 |
+| **Row Level Security (RLS)** | Supabaseテーブル単位のアクセス制御 | テナント間データ分離 |
+| **Admin Client使用** | サービスロールキーでRLSバイパス | AI API用の確実なデータ保存 |
+| **入力検証** | Zod + react-hook-form | フォーム入力の安全性確保 |
+
+### 📊 6.4 Markdownレンダリング機能
+| 機能 | 実装内容 | 目的 |
+|------|----------|------|
+| **AI回答表示** | react-markdown + remark-gfm | 美しいフォーマット表示 |
+| **対応記法** | 見出し、太字、リスト、コードブロック | 読みやすい回答提供 |
+| **セキュリティ** | HTMLサニタイゼーション | XSS攻撃防止 |
 
 ---
 
@@ -277,6 +310,8 @@
 - ✅ **問い合わせフォーム**: 事例に関する問い合わせフォーム機能
 - ✅ **ダッシュボード機能**: 統計情報と閲覧者一覧の表示
 - ✅ **閲覧者一覧機能**: 詳細なトラッキング情報と営業支援機能
+- ✅ **AI質問保存機能**: AI質問・回答をSupabaseに自動保存
+- ✅ **AI質問履歴表示**: ダッシュボードでAI質問履歴を表示
 
 - 事例作成AIアシスタント（ChatGPTで代替可能）
 - QRコード生成
@@ -411,7 +446,7 @@ CREATE TABLE access_logs (
 -- 💬 AI Questions table (軽い質問・トラッキング用)
 CREATE TABLE ai_questions (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  case_id UUID REFERENCES construction_cases(id) ON DELETE CASCADE,
+  case_id UUID REFERENCES construction_cases(id) ON DELETE SET NULL, -- NULL許可（事例集全体への質問）
   viewer_id UUID REFERENCES viewers(id) ON DELETE CASCADE,
   tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE, -- テナント分離
   question TEXT NOT NULL,
@@ -419,6 +454,41 @@ CREATE TABLE ai_questions (
   model_used TEXT DEFAULT 'gpt-4o-mini',
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+-- RLS Policies for ai_questions
+ALTER TABLE ai_questions ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Tenant can insert ai_questions" ON ai_questions
+  FOR INSERT WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM viewers 
+      WHERE id = viewer_id AND tenant_id = ai_questions.tenant_id
+    )
+  );
+
+CREATE POLICY "Tenant can view their ai_questions" ON ai_questions
+  FOR SELECT USING (
+    EXISTS (
+      SELECT 1 FROM viewers 
+      WHERE id = viewer_id AND tenant_id = ai_questions.tenant_id
+    )
+  );
+
+CREATE POLICY "Tenant can update their ai_questions" ON ai_questions
+  FOR UPDATE USING (
+    EXISTS (
+      SELECT 1 FROM viewers 
+      WHERE id = viewer_id AND tenant_id = ai_questions.tenant_id
+    )
+  );
+
+CREATE POLICY "Tenant can delete their ai_questions" ON ai_questions
+  FOR DELETE USING (
+    EXISTS (
+      SELECT 1 FROM viewers 
+      WHERE id = viewer_id AND tenant_id = ai_questions.tenant_id
+    )
+  );
 
 -- 📞 Inquiries table (問い合わせ・CV導線)
 CREATE TABLE inquiries (
@@ -1011,8 +1081,8 @@ npx shadcn-ui@latest add dialog alert toast
 - **閲覧者トラッキング**: 個人情報入力必須、アクセスログ記録
 - **AI質問機能**: GPT-4o-miniによるストリーミング回答
 - **問い合わせ機能**: メール通知付きの問い合わせフォーム
-- **ダッシュボード**: 統計表示と詳細な閲覧者一覧
-- **営業支援**: 関心度の可視化、連絡先への直接アクセス
+- **ダッシュボード**: 統計情報と閲覧者一覧の表示
+- **営業支援**: 関心度の可視化、連絡先への直接アクセス、質問内容の確認
 
 #### 🎯 次のステップ
 - **仮説検証**: 実際の営業活動での効果測定
