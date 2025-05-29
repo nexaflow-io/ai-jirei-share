@@ -11,7 +11,7 @@ interface AiQuestion {
   case_id: string | null;
   question: string;
   answer: string;
-  model: string;
+  model_used: string;
   created_at: string;
   construction_cases: { name: string } | null;
 }
@@ -96,10 +96,10 @@ export function AiQuestionsTable({ aiQuestions }: AiQuestionsTableProps) {
                           <p className="text-sm text-gray-700 line-clamp-2">
                             {question.question}
                           </p>
-                          {question.model && (
+                          {question.model_used && (
                             <div className="mt-2">
                               <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800">
-                                {question.model}
+                                {question.model_used}
                               </span>
                             </div>
                           )}
