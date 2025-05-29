@@ -13,7 +13,7 @@ import { Loader2 } from 'lucide-react';
 import { ViewerInfoForm } from '@/components/ViewerInfoForm';
 
 type CasesPageProps = {
-  params: { tenant_id: string };
+  params: { id: string };
 };
 
 export default function CasesPage({ params }: CasesPageProps) {
@@ -58,7 +58,7 @@ export default function CasesPage({ params }: CasesPageProps) {
         const { data: tenantData, error: tenantError } = await supabase
           .from('tenants')
           .select('id, name')
-          .eq('id', params.tenant_id)
+          .eq('id', params.id)
           .single();
           
         if (tenantError || !tenantData) {
@@ -86,7 +86,7 @@ export default function CasesPage({ params }: CasesPageProps) {
               full_name
             )
           `)
-          .eq('tenant_id', params.tenant_id)
+          .eq('tenant_id', params.id)
           .eq('is_published', true)
           .order('updated_at', { ascending: false });
           
@@ -129,7 +129,7 @@ export default function CasesPage({ params }: CasesPageProps) {
     };
     
     fetchData();
-  }, [params.tenant_id, router, supabase]);
+  }, [params.id, router, supabase]);
   
   // 閲覧者情報入力完了時の処理
   const handleViewerFormComplete = () => {
@@ -173,7 +173,7 @@ export default function CasesPage({ params }: CasesPageProps) {
         
         <ViewerInfoForm 
           caseId={casesWithImages[0]?.id || ''} 
-          tenantId={params.tenant_id} 
+          tenantId={params.id} 
           onComplete={handleViewerFormComplete} 
         />
       </div>
@@ -199,48 +199,56 @@ export default function CasesPage({ params }: CasesPageProps) {
           {casesWithImages.map((caseItem) => (
             <Link href={`/case/${caseItem.id}`} key={caseItem.id}>
               <Card className="h-full hover:shadow-lg transition-shadow duration-300 cursor-pointer">
-                <div className="relative w-full h-48 overflow-hidden">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-lg">{caseItem.name}</CardTitle>
+                  <CardDescription>
+                    {caseItem.category}
+                  </CardDescription>
+                </CardHeader>
+                
+                <CardContent>
                   {caseItem.thumbnail ? (
-                    <Image
-                      src={caseItem.thumbnail}
-                      alt={caseItem.name}
-                      fill
-                      sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-                      className="object-cover"
-                    />
+                    <div className="relative w-full h-48 mb-3 overflow-hidden rounded-md">
+                      <Image
+                        src={caseItem.thumbnail}
+                        alt={caseItem.name}
+                        fill
+                        sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                        className="object-cover"
+                      />
+                    </div>
                   ) : (
-                    <div className="w-full h-full bg-gray-200 flex items-center justify-center">
-                      <span className="text-gray-400">画像なし</span>
+                    <div className="w-full h-48 mb-3 bg-gray-100 flex items-center justify-center rounded-md">
+                      <p className="text-gray-400">画像なし</p>
                     </div>
                   )}
-                </div>
-                <CardHeader>
-                  <CardTitle className="line-clamp-2">{caseItem.name}</CardTitle>
-                  {caseItem.category && (
-                    <CardDescription>
-                      カテゴリ: {caseItem.category}
-                    </CardDescription>
-                  )}
-                </CardHeader>
-                <CardContent>
-                  <p className="text-sm text-gray-600 line-clamp-3">
-                    {caseItem.description || '説明なし'}
+                  <p className="line-clamp-3 text-sm text-gray-600">
+                    {caseItem.description}
                   </p>
                 </CardContent>
-                <CardFooter className="flex justify-between items-center">
-                  <span className="text-xs text-gray-500">
-                    {formatDistanceToNow(new Date(caseItem.updated_at), {
-                      addSuffix: true,
-                      locale: ja,
-                    })}
-                  </span>
-                  <Button variant="outline" size="sm">詳細を見る</Button>
+                
+                <CardFooter className="text-xs text-gray-500">
+                  <div className="flex justify-between w-full">
+                    <span>担当: {caseItem.users?.full_name || '不明'}</span>
+                    <span>
+                      {formatDistanceToNow(new Date(caseItem.updated_at), { 
+                        addSuffix: true,
+                        locale: ja 
+                      })}
+                    </span>
+                  </div>
                 </CardFooter>
               </Card>
             </Link>
           ))}
         </div>
       )}
+      
+      <div className="mt-8 text-center">
+        <Button variant="outline" onClick={() => router.push('/')}>
+          トップページに戻る
+        </Button>
+      </div>
     </div>
   );
 }
