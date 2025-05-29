@@ -114,6 +114,7 @@ tech_stack:
   ストレージ: "Supabase Storage (セキュリティポリシー適用)"
   メール送信: "Resend"
   ホスティング: "Vercel"
+  画像最適化: "Next.js Image Optimization"
   リアルタイム: "Supabase Realtime"
   UI: "shadcn/ui + Tailwind CSS"
   状態管理: "Zustand + React Query"

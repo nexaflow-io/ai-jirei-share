@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import React from 'react';
+import { PublicCaseCollections } from '@/components/PublicCaseCollections';
 
 export default function HomePage() {
   return (
@@ -71,6 +72,9 @@ export default function HomePage() {
               </div>
             </div>
           </div>
+          
+          {/* 公開事例集一覧 */}
+          <PublicCaseCollections />
         </div>
       </main>
 

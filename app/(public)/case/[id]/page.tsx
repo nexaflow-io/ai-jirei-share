@@ -1,8 +1,11 @@
 import { notFound } from 'next/navigation';
 import Image from 'next/image';
+import Link from 'next/link';
 import { createServerClient } from '@/lib/supabase/server';
 import { headers } from 'next/headers';
 import { Card, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { ChevronLeft } from 'lucide-react';
 import { AiChatWrapper } from '@/components/ai/AiChatWrapper';
 
 type CasePageProps = {
@@ -140,7 +143,13 @@ export default async function CasePage({ params }: CasePageProps) {
           </div>
         </div>
         
-        <h1 className="text-3xl font-bold mb-6">{caseData.name}</h1>
+        <div className="mb-6">
+          <Link href={`/cases/${caseData.tenant_id}`} className="inline-flex items-center text-primary hover:underline mb-2">
+            <ChevronLeft size={16} className="mr-1" />
+            事例集に戻る
+          </Link>
+          <h1 className="text-3xl font-bold">{caseData.name}</h1>
+        </div>
         
         <div className="mb-4">
           <span className="inline-block bg-gray-100 text-gray-800 px-3 py-1 rounded-full text-sm font-medium">
