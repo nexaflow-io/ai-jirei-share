@@ -66,7 +66,7 @@ export function useAuth() {
 
       if (error) throw error;
 
-      // ダッシュボードへリダイレクト（より確実な方法）
+      // ダッシュボードへリダイレクト
       window.location.href = '/dashboard';
       return { success: true, data };
     } catch (error: any) {
@@ -88,24 +88,8 @@ export function useAuth() {
 
       if (error) throw error;
 
-      // ダッシュボードへリダイレクト（複数の方法を試行）
-      console.log('認証成功、リダイレクト処理を開始します');
-      
-      // 方法1: window.location.href（最も確実な方法）
+      // ダッシュボードへリダイレクト
       window.location.href = '/dashboard';
-      
-      // 方法2: タイムアウト後に再試行
-      setTimeout(() => {
-        console.log('リダイレクト再試行');
-        window.location.replace('/dashboard');
-      }, 500);
-      
-      // 方法3: さらにタイムアウト後に再試行
-      setTimeout(() => {
-        console.log('リダイレクト最終試行');
-        document.location.href = '/dashboard';
-      }, 1000);
-      
       return { success: true, data };
     } catch (error: any) {
       console.error('Sign in error:', error);
