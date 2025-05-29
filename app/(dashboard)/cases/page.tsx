@@ -3,7 +3,7 @@ import { createServerClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 
 import { Button } from '@/components/ui/button';
-import { CaseList } from '@/components/CaseList';
+import CaseList from '@/components/CaseList';
 
 export const metadata = {
   title: '事例一覧 | AI事例シェア',
@@ -38,7 +38,7 @@ export default async function CasesPage() {
     );
   }
   
-  // 事例一覧を取得
+  // 事例一覧を取得（関連データも一括取得で最適化）
   const { data: casesData, error: casesError } = await supabase
     .from('construction_cases')
     .select(`
@@ -47,42 +47,27 @@ export default async function CasesPage() {
       category,
       is_published,
       created_at,
-      updated_at
+      updated_at,
+      case_images(id),
+      viewers(id),
+      access_logs(id)
     `)
     .eq('tenant_id', userData.tenant_id)
     .order('updated_at', { ascending: false });
     
-  // 画像、閲覧者、アクセスログのカウントを別途取得
-  const cases = casesData ? await Promise.all(
-    casesData.map(async (caseItem) => {
-      // 画像数を取得
-      const { count: imageCount } = await supabase
-        .from('case_images')
-        .select('*', { count: 'exact', head: true })
-        .eq('case_id', caseItem.id);
-        
-      // 閲覧者数を取得
-      const { count: viewerCount } = await supabase
-        .from('viewers')
-        .select('*', { count: 'exact', head: true })
-        .eq('case_id', caseItem.id);
-        
-      // アクセスログ数を取得
-      const { count: accessCount } = await supabase
-        .from('access_logs')
-        .select('*', { count: 'exact', head: true })
-        .eq('case_id', caseItem.id);
-        
-      return {
-        ...caseItem,
-        _count: {
-          case_images: imageCount || 0,
-          viewers: viewerCount || 0,
-          access_logs: accessCount || 0
-        }
-      };
-    })
-  ) : [];
+  // データを整形（N+1クエリ問題を解決）
+  const cases = casesData ? casesData.map((caseItem) => ({
+    ...caseItem,
+    _count: {
+      case_images: caseItem.case_images?.length || 0,
+      viewers: caseItem.viewers?.length || 0,
+      access_logs: caseItem.access_logs?.length || 0
+    },
+    // 不要な配列データを削除してメモリ使用量を削減
+    case_images: undefined,
+    viewers: undefined,
+    access_logs: undefined
+  })) : [];
     
   if (casesError) {
     console.error('事例取得エラー:', casesError);

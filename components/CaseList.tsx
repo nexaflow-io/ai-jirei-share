@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo, memo } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
@@ -37,7 +37,7 @@ type CaseListProps = {
   cases: Case[];
 };
 
-export function CaseList({ cases }: CaseListProps) {
+const CaseList = memo(({ cases }: CaseListProps) => {
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [isCopying, setIsCopying] = useState(false);
@@ -87,6 +87,71 @@ export function CaseList({ cases }: CaseListProps) {
     }
   };
 
+  // メモ化されたケースリストレンダリング
+  const renderedCases = useMemo(() => {
+    return cases.map((caseItem) => (
+      <tr key={caseItem.id} className="hover:bg-gray-50">
+        <td className="px-6 py-4 whitespace-nowrap">
+          <div className="text-sm font-medium text-gray-900">
+            {caseItem.name}
+          </div>
+        </td>
+        <td className="px-6 py-4 whitespace-nowrap">
+          <div className="text-sm text-gray-500">{caseItem.category}</div>
+        </td>
+        <td className="px-6 py-4 whitespace-nowrap">
+          <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+            caseItem.is_published
+              ? 'bg-green-100 text-green-800'
+              : 'bg-gray-100 text-gray-800'
+          }`}>
+            {caseItem.is_published ? '公開中' : '非公開'}
+          </span>
+        </td>
+        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+          {caseItem._count?.case_images || 0}枚
+        </td>
+        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+          {caseItem._count?.viewers || 0}人
+        </td>
+        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+          {formatDistanceToNow(new Date(caseItem.updated_at), {
+            addSuffix: true,
+            locale: ja,
+          })}
+        </td>
+        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+          <div className="flex justify-end space-x-2">
+            <CopyCollectionLinkButton url={`${window.location.origin}/case-collections/${caseItem.id}`}/>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => copyShareLink(caseItem.id)}
+              disabled={isCopying}
+            >
+              <Copy size={16} className={copiedId === caseItem.id ? 'text-green-500' : ''} />
+              <span className="sr-only">共有</span>
+            </Button>
+            <Link href={`/cases/${caseItem.id}/edit`}>
+              <Button variant="ghost" size="sm">
+                <Edit size={16} />
+                <span className="sr-only">編集</span>
+              </Button>
+            </Link>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setDeleteId(caseItem.id)}
+            >
+              <Trash2 size={16} className="text-red-500" />
+              <span className="sr-only">削除</span>
+            </Button>
+          </div>
+        </td>
+      </tr>
+    ));
+  }, [cases, isCopying, copiedId]);
+
   if (cases.length === 0) {
     return (
       <div className="text-center p-8 bg-white rounded-lg shadow">
@@ -130,67 +195,7 @@ export function CaseList({ cases }: CaseListProps) {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {cases.map((caseItem) => (
-                <tr key={caseItem.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm font-medium text-gray-900">
-                      {caseItem.name}
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm text-gray-500">{caseItem.category}</div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                      caseItem.is_published
-                        ? 'bg-green-100 text-green-800'
-                        : 'bg-gray-100 text-gray-800'
-                    }`}>
-                      {caseItem.is_published ? '公開中' : '非公開'}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {caseItem._count?.case_images || 0}枚
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {caseItem._count?.viewers || 0}人
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {formatDistanceToNow(new Date(caseItem.updated_at), {
-                      addSuffix: true,
-                      locale: ja,
-                    })}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                    <div className="flex justify-end space-x-2">
-                      <CopyCollectionLinkButton url={`${window.location.origin}/case-collections/${caseItem.id}`}/>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => copyShareLink(caseItem.id)}
-                        disabled={isCopying}
-                      >
-                        <Copy size={16} className={copiedId === caseItem.id ? 'text-green-500' : ''} />
-                        <span className="sr-only">共有</span>
-                      </Button>
-                      <Link href={`/cases/${caseItem.id}/edit`}>
-                        <Button variant="ghost" size="sm">
-                          <Edit size={16} />
-                          <span className="sr-only">編集</span>
-                        </Button>
-                      </Link>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setDeleteId(caseItem.id)}
-                      >
-                        <Trash2 size={16} className="text-red-500" />
-                        <span className="sr-only">削除</span>
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+              {renderedCases}
             </tbody>
           </table>
         </div>
@@ -225,4 +230,6 @@ export function CaseList({ cases }: CaseListProps) {
       </Dialog>
     </div>
   );
-}
+});
+
+export default CaseList;
