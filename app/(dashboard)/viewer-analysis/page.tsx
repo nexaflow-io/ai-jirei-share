@@ -9,17 +9,13 @@ import {
   TrendingUp, 
   Users, 
   Eye,
-  Clock,
-  Calendar,
   Building2,
-  Star,
   Activity,
-  Target,
-  Filter,
-  Download
+  Calendar,
+  AlertCircle
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
-import { formatDistanceToNow, format, startOfWeek, endOfWeek, eachDayOfInterval } from 'date-fns';
+import { formatDistanceToNow, format } from 'date-fns';
 import { ja } from 'date-fns/locale';
 
 interface AnalyticsData {
@@ -51,6 +47,7 @@ interface AnalyticsData {
 export default function ViewerAnalysisPage() {
   const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [timeRange, setTimeRange] = useState<'7d' | '30d' | '90d'>('30d');
 
   useEffect(() => {
@@ -60,6 +57,7 @@ export default function ViewerAnalysisPage() {
   const fetchAnalytics = async () => {
     try {
       setLoading(true);
+      setError(null);
       const supabase = createClient();
 
       // 期間の計算
@@ -77,20 +75,34 @@ export default function ViewerAnalysisPage() {
           break;
       }
 
-      // 基本統計の取得
+      // 基本統計の取得 - accessed_atフィールドを使用
       const [viewersResult, accessLogsResult] = await Promise.all([
         supabase
           .from('viewers')
-          .select('*, construction_cases(name), tenants(name)')
+          .select('id, company_name, full_name, created_at')
           .gte('created_at', startDate.toISOString()),
         supabase
           .from('access_logs')
-          .select('*, viewers(company_name), construction_cases(name)')
-          .gte('created_at', startDate.toISOString())
+          .select(`
+            id,
+            viewer_id,
+            case_id,
+            accessed_at,
+            viewers(company_name, full_name),
+            construction_cases(name)
+          `)
+          .gte('accessed_at', startDate.toISOString())
       ]);
 
-      if (viewersResult.error) throw viewersResult.error;
-      if (accessLogsResult.error) throw accessLogsResult.error;
+      if (viewersResult.error) {
+        console.error('Viewers query error:', viewersResult.error);
+        throw new Error('閲覧者データの取得に失敗しました');
+      }
+      
+      if (accessLogsResult.error) {
+        console.error('Access logs query error:', accessLogsResult.error);
+        throw new Error('アクセスログの取得に失敗しました');
+      }
 
       const viewers = viewersResult.data || [];
       const accessLogs = accessLogsResult.data || [];
@@ -98,12 +110,12 @@ export default function ViewerAnalysisPage() {
       // 統計データの計算
       const totalViewers = viewers.length;
       const totalViews = accessLogs.length;
-      const averageViewsPerViewer = totalViewers > 0 ? totalViews / totalViewers : 0;
+      const averageViewsPerViewer = totalViewers > 0 ? Math.round((totalViews / totalViewers) * 10) / 10 : 0;
 
       // 会社別統計
       const companyStats = new Map();
       viewers.forEach(viewer => {
-        const company = viewer.company_name;
+        const company = viewer.company_name || '不明';
         if (!companyStats.has(company)) {
           companyStats.set(company, { viewer_count: 0, total_views: 0 });
         }
@@ -111,8 +123,8 @@ export default function ViewerAnalysisPage() {
       });
 
       accessLogs.forEach(log => {
-        const company = log.viewers?.company_name;
-        if (company && companyStats.has(company)) {
+        const company = log.viewers?.company_name || '不明';
+        if (companyStats.has(company)) {
           companyStats.get(company).total_views++;
         }
       });
@@ -120,7 +132,7 @@ export default function ViewerAnalysisPage() {
       const topCompanies = Array.from(companyStats.entries())
         .map(([company_name, stats]) => ({ company_name, ...stats }))
         .sort((a, b) => b.total_views - a.total_views)
-        .slice(0, 10);
+        .slice(0, 5);
 
       // 事例別統計
       const caseStats = new Map();
@@ -142,14 +154,18 @@ export default function ViewerAnalysisPage() {
           unique_viewers: stats.viewers.size
         }))
         .sort((a, b) => b.view_count - a.view_count)
-        .slice(0, 10);
+        .slice(0, 5);
 
-      // 日別統計
+      // 日別統計（過去7日間）
+      const last7Days = [];
+      for (let i = 6; i >= 0; i--) {
+        const date = new Date();
+        date.setDate(date.getDate() - i);
+        last7Days.push(format(date, 'yyyy-MM-dd'));
+      }
+
       const dailyStats = new Map();
-      const dateRange = eachDayOfInterval({ start: startDate, end: endDate });
-      
-      dateRange.forEach(date => {
-        const dateStr = format(date, 'yyyy-MM-dd');
+      last7Days.forEach(dateStr => {
         dailyStats.set(dateStr, { views: 0, viewers: new Set() });
       });
 
@@ -199,253 +215,272 @@ export default function ViewerAnalysisPage() {
       });
 
     } catch (error) {
-      console.error('分析データ取得エラー:', error);
+      console.error('Analytics fetch error:', error);
+      setError(error instanceof Error ? error.message : '分析データの読み込みに失敗しました');
     } finally {
       setLoading(false);
     }
   };
 
+  const getTimeRangeLabel = (range: string) => {
+    switch (range) {
+      case '7d': return '過去7日間';
+      case '30d': return '過去30日間';
+      case '90d': return '過去90日間';
+      default: return '過去30日間';
+    }
+  };
+
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600"></div>
+      <div className="min-h-screen bg-gray-50 p-6">
+        <div className="max-w-7xl mx-auto">
+          <div className="flex items-center justify-center h-64">
+            <div className="flex items-center space-x-2">
+              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+              <span className="text-gray-600">分析データを読み込み中...</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gray-50 p-6">
+        <div className="max-w-7xl mx-auto">
+          <Card className="border-red-200 bg-red-50">
+            <CardContent className="p-6">
+              <div className="flex items-center space-x-2 text-red-600">
+                <AlertCircle className="h-5 w-5" />
+                <span className="font-medium">エラーが発生しました</span>
+              </div>
+              <p className="text-red-600 mt-2">{error}</p>
+              <Button 
+                onClick={fetchAnalytics} 
+                className="mt-4"
+                variant="outline"
+              >
+                再試行
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     );
   }
 
   if (!analytics) {
     return (
-      <div className="text-center py-12">
-        <p className="text-gray-600">分析データを読み込めませんでした</p>
+      <div className="min-h-screen bg-gray-50 p-6">
+        <div className="max-w-7xl mx-auto">
+          <Card>
+            <CardContent className="p-6 text-center">
+              <p className="text-gray-600">分析データがありません</p>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-8">
-      {/* ヘッダー */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">閲覧者分析</h1>
-          <p className="text-gray-600 mt-2">閲覧者の行動パターンと関心度を分析</p>
-        </div>
-        <div className="flex items-center space-x-4">
-          <div className="flex rounded-lg border">
-            {(['7d', '30d', '90d'] as const).map((range) => (
-              <Button
-                key={range}
-                variant={timeRange === range ? 'default' : 'ghost'}
-                size="sm"
-                onClick={() => setTimeRange(range)}
-                className="rounded-none first:rounded-l-lg last:rounded-r-lg"
-              >
-                {range === '7d' ? '7日間' : range === '30d' ? '30日間' : '90日間'}
-              </Button>
-            ))}
-          </div>
-          <Button variant="outline" size="sm">
-            <Download className="w-4 h-4 mr-1" />
-            エクスポート
-          </Button>
-        </div>
-      </div>
-
-      {/* 統計カード */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">総閲覧者数</p>
-                <p className="text-3xl font-bold text-gray-900">{analytics.totalViewers}</p>
-              </div>
-              <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
-                <Users className="w-6 h-6 text-blue-600" />
-              </div>
+    <div className="min-h-screen bg-gray-50 p-6">
+      <div className="max-w-7xl mx-auto space-y-6">
+        {/* ヘッダー */}
+        <div className="bg-white rounded-lg shadow-sm border p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900 flex items-center">
+                <BarChart3 className="h-6 w-6 mr-2 text-blue-600" />
+                閲覧者分析
+              </h1>
+              <p className="text-gray-600 mt-1">サイト訪問者の行動分析と統計情報</p>
             </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">総閲覧数</p>
-                <p className="text-3xl font-bold text-gray-900">{analytics.totalViews}</p>
-              </div>
-              <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
-                <Eye className="w-6 h-6 text-green-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">平均閲覧数/人</p>
-                <p className="text-3xl font-bold text-gray-900">{analytics.averageViewsPerViewer.toFixed(1)}</p>
-              </div>
-              <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
-                <BarChart3 className="w-6 h-6 text-purple-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">高関心度</p>
-                <p className="text-3xl font-bold text-gray-900">{analytics.interestLevels.high}</p>
-              </div>
-              <div className="w-12 h-12 bg-red-100 rounded-lg flex items-center justify-center">
-                <Star className="w-6 h-6 text-red-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* 関心度分布 */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center">
-            <Target className="w-5 h-5 mr-2" />
-            関心度分布
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center">
-                <div className="w-4 h-4 bg-red-500 rounded mr-3"></div>
-                <span className="font-medium">高関心度（5回以上閲覧）</span>
-              </div>
-              <div className="flex items-center">
-                <span className="text-2xl font-bold text-red-600 mr-2">{analytics.interestLevels.high}</span>
-                <span className="text-gray-600">人</span>
-              </div>
-            </div>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center">
-                <div className="w-4 h-4 bg-yellow-500 rounded mr-3"></div>
-                <span className="font-medium">中関心度（2-4回閲覧）</span>
-              </div>
-              <div className="flex items-center">
-                <span className="text-2xl font-bold text-yellow-600 mr-2">{analytics.interestLevels.medium}</span>
-                <span className="text-gray-600">人</span>
-              </div>
-            </div>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center">
-                <div className="w-4 h-4 bg-green-500 rounded mr-3"></div>
-                <span className="font-medium">低関心度（1回閲覧）</span>
-              </div>
-              <div className="flex items-center">
-                <span className="text-2xl font-bold text-green-600 mr-2">{analytics.interestLevels.low}</span>
-                <span className="text-gray-600">人</span>
-              </div>
+            <div className="flex space-x-2">
+              {(['7d', '30d', '90d'] as const).map((range) => (
+                <Button
+                  key={range}
+                  variant={timeRange === range ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setTimeRange(range)}
+                  className="text-sm"
+                >
+                  {getTimeRangeLabel(range)}
+                </Button>
+              ))}
             </div>
           </div>
-        </CardContent>
-      </Card>
+        </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* 人気企業ランキング */}
-        <Card>
+        {/* 基本統計 */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <Card className="bg-white shadow-sm border">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-600">総閲覧者数</p>
+                  <p className="text-2xl font-bold text-gray-900">{analytics.totalViewers}</p>
+                </div>
+                <Users className="h-8 w-8 text-blue-600" />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-white shadow-sm border">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-600">総ページビュー</p>
+                  <p className="text-2xl font-bold text-gray-900">{analytics.totalViews}</p>
+                </div>
+                <Eye className="h-8 w-8 text-green-600" />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-white shadow-sm border">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-600">平均ページビュー</p>
+                  <p className="text-2xl font-bold text-gray-900">{analytics.averageViewsPerViewer}</p>
+                </div>
+                <TrendingUp className="h-8 w-8 text-orange-600" />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-white shadow-sm border">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-600">高関心度ユーザー</p>
+                  <p className="text-2xl font-bold text-gray-900">{analytics.interestLevels.high}</p>
+                </div>
+                <Activity className="h-8 w-8 text-red-600" />
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* 関心度レベル */}
+        <Card className="bg-white shadow-sm border">
           <CardHeader>
-            <CardTitle className="flex items-center">
-              <Building2 className="w-5 h-5 mr-2" />
-              人気企業ランキング
+            <CardTitle className="text-lg font-semibold text-gray-900">関心度レベル分布</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="text-center p-4 bg-red-50 rounded-lg border border-red-200">
+                <div className="text-2xl font-bold text-red-600">{analytics.interestLevels.high}</div>
+                <div className="text-sm text-red-700">高関心度 (5回以上)</div>
+              </div>
+              <div className="text-center p-4 bg-yellow-50 rounded-lg border border-yellow-200">
+                <div className="text-2xl font-bold text-yellow-600">{analytics.interestLevels.medium}</div>
+                <div className="text-sm text-yellow-700">中関心度 (2-4回)</div>
+              </div>
+              <div className="text-center p-4 bg-gray-50 rounded-lg border border-gray-200">
+                <div className="text-2xl font-bold text-gray-600">{analytics.interestLevels.low}</div>
+                <div className="text-sm text-gray-700">低関心度 (1回)</div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* 上位企業 */}
+          <Card className="bg-white shadow-sm border">
+            <CardHeader>
+              <CardTitle className="text-lg font-semibold text-gray-900 flex items-center">
+                <Building2 className="h-5 w-5 mr-2 text-blue-600" />
+                アクティブ企業 TOP5
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {analytics.topCompanies.map((company, index) => (
+                  <div key={company.company_name} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-6 h-6 bg-blue-600 text-white rounded-full flex items-center justify-center text-xs font-bold">
+                        {index + 1}
+                      </div>
+                      <span className="font-medium text-gray-900">{company.company_name}</span>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-sm font-medium text-gray-900">{company.total_views} ビュー</div>
+                      <div className="text-xs text-gray-600">{company.viewer_count} 人</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* 人気事例 */}
+          <Card className="bg-white shadow-sm border">
+            <CardHeader>
+              <CardTitle className="text-lg font-semibold text-gray-900 flex items-center">
+                <Eye className="h-5 w-5 mr-2 text-green-600" />
+                人気事例 TOP5
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {analytics.topCases.map((caseItem, index) => (
+                  <div key={caseItem.case_name} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-6 h-6 bg-green-600 text-white rounded-full flex items-center justify-center text-xs font-bold">
+                        {index + 1}
+                      </div>
+                      <span className="font-medium text-gray-900 truncate">{caseItem.case_name}</span>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-sm font-medium text-gray-900">{caseItem.view_count} ビュー</div>
+                      <div className="text-xs text-gray-600">{caseItem.unique_viewers} 人</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* 日別アクティビティ */}
+        <Card className="bg-white shadow-sm border">
+          <CardHeader>
+            <CardTitle className="text-lg font-semibold text-gray-900 flex items-center">
+              <Calendar className="h-5 w-5 mr-2 text-purple-600" />
+              過去7日間のアクティビティ
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
-              {analytics.topCompanies.map((company, index) => (
-                <div key={company.company_name} className="flex items-center justify-between">
-                  <div className="flex items-center">
-                    <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-bold text-sm mr-3">
-                      {index + 1}
+            <div className="space-y-3">
+              {analytics.dailyViews.map((day) => (
+                <div key={day.date} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                  <div className="font-medium text-gray-900">
+                    {format(new Date(day.date), 'M月d日(E)', { locale: ja })}
+                  </div>
+                  <div className="flex items-center space-x-4">
+                    <div className="text-right">
+                      <div className="text-sm font-medium text-gray-900">{day.views} ビュー</div>
+                      <div className="text-xs text-gray-600">{day.unique_viewers} ユニークユーザー</div>
                     </div>
-                    <div>
-                      <p className="font-medium text-gray-900">{company.company_name}</p>
-                      <p className="text-sm text-gray-600">{company.viewer_count}人の閲覧者</p>
+                    <div className="w-20 bg-gray-200 rounded-full h-2">
+                      <div 
+                        className="bg-purple-600 h-2 rounded-full" 
+                        style={{ 
+                          width: `${Math.min(100, (day.views / Math.max(...analytics.dailyViews.map(d => d.views))) * 100)}%` 
+                        }}
+                      ></div>
                     </div>
                   </div>
-                  <Badge variant="outline">
-                    {company.total_views}回閲覧
-                  </Badge>
                 </div>
               ))}
             </div>
           </CardContent>
         </Card>
-
-        {/* 人気事例ランキング */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center">
-              <TrendingUp className="w-5 h-5 mr-2" />
-              人気事例ランキング
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {analytics.topCases.map((caseItem, index) => (
-                <div key={caseItem.case_name} className="flex items-center justify-between">
-                  <div className="flex items-center">
-                    <div className="w-8 h-8 bg-gradient-to-br from-green-500 to-blue-600 rounded-full flex items-center justify-center text-white font-bold text-sm mr-3">
-                      {index + 1}
-                    </div>
-                    <div>
-                      <p className="font-medium text-gray-900 line-clamp-1">{caseItem.case_name}</p>
-                      <p className="text-sm text-gray-600">{caseItem.unique_viewers}人が閲覧</p>
-                    </div>
-                  </div>
-                  <Badge variant="outline">
-                    {caseItem.view_count}回
-                  </Badge>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
       </div>
-
-      {/* 日別アクティビティ */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center">
-            <Activity className="w-5 h-5 mr-2" />
-            日別アクティビティ
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            {analytics.dailyViews.slice(-7).map((day) => (
-              <div key={day.date} className="flex items-center justify-between">
-                <div className="flex items-center">
-                  <Calendar className="w-4 h-4 text-gray-400 mr-3" />
-                  <span className="font-medium">{format(new Date(day.date), 'M月d日(E)', { locale: ja })}</span>
-                </div>
-                <div className="flex items-center space-x-4">
-                  <Badge variant="outline">
-                    <Eye className="w-3 h-3 mr-1" />
-                    {day.views}回閲覧
-                  </Badge>
-                  <Badge variant="outline">
-                    <Users className="w-3 h-3 mr-1" />
-                    {day.unique_viewers}人
-                  </Badge>
-                </div>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
     </div>
   );
 }
