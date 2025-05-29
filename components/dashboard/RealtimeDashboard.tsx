@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { Card, CardContent } from '@/components/ui/card';
 import { AiQuestionsTable } from './AiQuestionsTable';
@@ -61,68 +61,152 @@ export function RealtimeDashboard({
   const [stats, setStats] = useState<Stats>(initialStats);
   const [aiQuestions, setAiQuestions] = useState<AiQuestion[]>(initialAiQuestions);
   const [viewers, setViewers] = useState<Viewer[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
   const supabase = createClientComponentClient();
 
-  // 閲覧者データを取得する関数
-  const fetchViewers = async () => {
+  // デバウンス用のタイマー
+  const [debounceTimer, setDebounceTimer] = useState<NodeJS.Timeout | null>(null);
+
+  // 閲覧者データを取得する関数（メモ化）
+  const fetchViewers = useCallback(async () => {
+    if (isLoading) return; // 既にロード中の場合はスキップ
+    
     try {
-      const response = await fetch('/api/dashboard/viewers');
+      setIsLoading(true);
+      const response = await fetch('/api/dashboard/viewers', {
+        cache: 'no-store', // キャッシュを無効化
+      });
+      
       if (response.ok) {
         const data = await response.json();
         setViewers(data.viewers || []);
+        setLastUpdate(new Date());
+      } else {
+        console.error('閲覧者データの取得に失敗:', response.status);
       }
     } catch (error) {
       console.error('閲覧者データの取得に失敗しました:', error);
+    } finally {
+      setIsLoading(false);
     }
-  };
+  }, [isLoading]);
 
-  useEffect(() => {
-    // 初回の閲覧者データ取得
-    fetchViewers();
-
-    // 統計情報を定期的に更新
-    const statsInterval = setInterval(async () => {
-      try {
-        // 事例数
-        const { data: casesData } = await supabase
+  // 統計情報を更新する関数（メモ化・最適化）
+  const updateStats = useCallback(async () => {
+    if (isLoading) return; // 既にロード中の場合はスキップ
+    
+    try {
+      setIsLoading(true);
+      
+      // 並列でクエリを実行して高速化
+      const [casesResult, viewersResult, inquiriesResult, aiQuestionsResult] = await Promise.all([
+        supabase
           .from('construction_cases')
           .select('id, is_published')
-          .eq('tenant_id', tenantId);
-        
-        // 閲覧数
-        const { data: viewersData } = await supabase
+          .eq('tenant_id', tenantId),
+        supabase
           .from('viewers')
           .select('id')
-          .eq('tenant_id', tenantId);
-        
-        // 問い合わせ数
-        const { data: inquiriesData } = await supabase
+          .eq('tenant_id', tenantId),
+        supabase
           .from('inquiries')
           .select('id')
-          .eq('tenant_id', tenantId);
-        
-        // AI質問数
-        const { data: aiQuestionsData } = await supabase
+          .eq('tenant_id', tenantId),
+        supabase
           .from('ai_questions')
           .select('id')
-          .eq('tenant_id', tenantId);
-        
-        setStats({
-          totalCases: casesData?.length || 0,
-          publishedCases: casesData?.filter((c: any) => c.is_published)?.length || 0,
-          totalViews: viewersData?.length || 0,
-          totalInquiries: inquiriesData?.length || 0,
-          totalAiQuestions: aiQuestionsData?.length || 0,
-        });
+          .eq('tenant_id', tenantId)
+      ]);
 
-        // 閲覧者データも更新
-        fetchViewers();
-      } catch (error) {
-        console.error('統計情報の更新に失敗しました:', error);
+      // エラーチェック
+      if (casesResult.error) throw casesResult.error;
+      if (viewersResult.error) throw viewersResult.error;
+      if (inquiriesResult.error) throw inquiriesResult.error;
+      if (aiQuestionsResult.error) throw aiQuestionsResult.error;
+
+      const newStats = {
+        totalCases: casesResult.data?.length || 0,
+        publishedCases: casesResult.data?.filter((c: any) => c.is_published)?.length || 0,
+        totalViews: viewersResult.data?.length || 0,
+        totalInquiries: inquiriesResult.data?.length || 0,
+        totalAiQuestions: aiQuestionsResult.data?.length || 0,
+      };
+
+      setStats(newStats);
+      setLastUpdate(new Date());
+    } catch (error) {
+      console.error('統計情報の更新に失敗しました:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [supabase, tenantId, isLoading]);
+
+  // AI質問データを更新する関数（メモ化）
+  const updateAiQuestions = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from('ai_questions')
+        .select(`
+          id,
+          case_id,
+          question,
+          answer,
+          model_used,
+          created_at,
+          construction_cases (name)
+        `)
+        .eq('tenant_id', tenantId)
+        .order('created_at', { ascending: false })
+        .limit(10);
+
+      if (error) throw error;
+
+      if (data) {
+        const formattedQuestions = data.map((item: any) => ({
+          id: item.id,
+          case_id: item.case_id,
+          question: item.question,
+          answer: item.answer,
+          model: item.model_used,
+          created_at: item.created_at,
+          construction_cases: item.construction_cases
+        }));
+        setAiQuestions(formattedQuestions);
       }
-    }, 30000); // 30秒ごとに更新
+    } catch (error) {
+      console.error('AI質問データの更新に失敗しました:', error);
+    }
+  }, [supabase, tenantId]);
 
-    // AI質問のリアルタイム更新
+  // デバウンス付きの更新関数
+  const debouncedUpdate = useCallback((updateFn: () => Promise<void>) => {
+    if (debounceTimer) {
+      clearTimeout(debounceTimer);
+    }
+    
+    const timer = setTimeout(() => {
+      updateFn();
+    }, 500); // 500ms のデバウンス
+    
+    setDebounceTimer(timer);
+  }, [debounceTimer]);
+
+  useEffect(() => {
+    // 初回データ取得
+    fetchViewers();
+
+    // 統計情報を5分ごとに更新（30秒から変更）
+    const statsInterval = setInterval(() => {
+      updateStats();
+    }, 300000); // 5分 = 300,000ms
+
+    // 閲覧者データを10分ごとに更新
+    const viewersInterval = setInterval(() => {
+      fetchViewers();
+    }, 600000); // 10分 = 600,000ms
+
+    // AI質問のリアルタイム更新（デバウンス付き）
     const aiQuestionsSubscription = supabase
       .channel('ai-questions-changes')
       .on(
@@ -133,48 +217,16 @@ export function RealtimeDashboard({
           table: 'ai_questions',
           filter: `tenant_id=eq.${tenantId}`
         },
-        async (payload) => {
-          // 新しいAI質問が追加されたら、最新のAI質問リストを取得
-          const { data } = await supabase
-            .from('ai_questions')
-            .select(`
-              id,
-              case_id,
-              question,
-              answer,
-              model_used,
-              created_at,
-              construction_cases (name)
-            `)
-            .eq('tenant_id', tenantId)
-            .order('created_at', { ascending: false })
-            .limit(10);
-          
-          if (data) {
-            // 型変換を行い、model_usedをmodelにマッピング
-            const formattedData = data.map((item: any) => ({
-              id: item.id,
-              case_id: item.case_id,
-              question: item.question,
-              answer: item.answer,
-              model: item.model_used,
-              created_at: item.created_at,
-              construction_cases: item.construction_cases
-            }));
-            
-            setAiQuestions(formattedData);
-            
-            // 統計情報も更新
-            setStats(prev => ({
-              ...prev,
-              totalAiQuestions: prev.totalAiQuestions + 1
-            }));
-          }
+        () => {
+          // デバウンス付きでAI質問データを更新
+          debouncedUpdate(updateAiQuestions);
+          // 統計情報も軽量に更新
+          debouncedUpdate(updateStats);
         }
       )
       .subscribe();
 
-    // 閲覧者のリアルタイム更新
+    // 閲覧者の変更をリアルタイムで監視（デバウンス付き）
     const viewersSubscription = supabase
       .channel('viewers-changes')
       .on(
@@ -186,108 +238,108 @@ export function RealtimeDashboard({
           filter: `tenant_id=eq.${tenantId}`
         },
         () => {
-          // 閲覧者データが変更されたら再取得
-          fetchViewers();
+          // デバウンス付きで閲覧者データを更新
+          debouncedUpdate(fetchViewers);
+          // 統計情報も軽量に更新
+          debouncedUpdate(updateStats);
         }
       )
       .subscribe();
-    
-    // クリーンアップ関数
+
+    // クリーンアップ
     return () => {
       clearInterval(statsInterval);
-      supabase.removeChannel(aiQuestionsSubscription);
-      supabase.removeChannel(viewersSubscription);
+      clearInterval(viewersInterval);
+      aiQuestionsSubscription.unsubscribe();
+      viewersSubscription.unsubscribe();
+      if (debounceTimer) {
+        clearTimeout(debounceTimer);
+      }
     };
-  }, [supabase, tenantId]);
+  }, [fetchViewers, updateStats, updateAiQuestions, debouncedUpdate, supabase, tenantId, debounceTimer]);
 
-  const statCards = [
+  // 統計カードのデータをメモ化
+  const statsCards = useMemo(() => [
     {
-      title: '総事例数',
+      title: '事例数',
       value: stats.totalCases,
       icon: FileText,
-      color: 'from-blue-500 to-blue-600',
-      bgColor: 'from-blue-50 to-blue-100',
-      description: '登録済み施工事例'
-    },
-    {
-      title: '公開事例数',
-      value: stats.publishedCases,
-      icon: Globe,
-      color: 'from-green-500 to-green-600',
-      bgColor: 'from-green-50 to-green-100',
-      description: '公開中の事例'
+      color: 'text-blue-600',
+      bgColor: 'bg-blue-50',
+      description: `公開中: ${stats.publishedCases}件`
     },
     {
       title: '総閲覧数',
       value: stats.totalViews,
       icon: Eye,
-      color: 'from-purple-500 to-purple-600',
-      bgColor: 'from-purple-50 to-purple-100',
-      description: 'ページビュー数'
+      color: 'text-green-600',
+      bgColor: 'bg-green-50',
+      description: 'ユニーク閲覧者数'
     },
     {
-      title: '問い合わせ数',
+      title: 'お問い合わせ',
       value: stats.totalInquiries,
       icon: MessageSquare,
-      color: 'from-orange-500 to-orange-600',
-      bgColor: 'from-orange-50 to-orange-100',
+      color: 'text-orange-600',
+      bgColor: 'bg-orange-50',
       description: '受信した問い合わせ'
     },
     {
       title: 'AI質問数',
       value: stats.totalAiQuestions,
       icon: Bot,
-      color: 'from-indigo-500 to-indigo-600',
-      bgColor: 'from-indigo-50 to-indigo-100',
-      description: 'AI による質問回答'
+      color: 'text-purple-600',
+      bgColor: 'bg-purple-50',
+      description: 'AIへの質問回数'
     }
-  ];
+  ], [stats]);
 
   return (
     <div className="space-y-8">
-      {/* 統計カード */}
-      <div>
-        <div className="flex items-center mb-6">
+      {/* ヘッダー情報 */}
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center">
           <TrendingUp className="w-6 h-6 text-gray-600 mr-2" />
           <h2 className="text-xl font-bold text-gray-900">統計情報</h2>
+          {isLoading && (
+            <div className="ml-3 flex items-center text-sm text-gray-500">
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600 mr-2"></div>
+              更新中...
+            </div>
+          )}
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 sm:gap-6">
-          {statCards.map((card, index) => {
-            const IconComponent = card.icon;
-            return (
-              <Card key={index} className="relative overflow-hidden border-0 shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
-                <div className={`absolute inset-0 bg-gradient-to-br ${card.bgColor} opacity-50`} />
-                <CardContent className="relative p-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className={`w-12 h-12 bg-gradient-to-br ${card.color} rounded-xl flex items-center justify-center shadow-lg`}>
-                      <IconComponent className="w-6 h-6 text-white" />
-                    </div>
-                    <div className="text-right">
-                      <p className="text-2xl sm:text-3xl font-bold text-gray-900">
-                        {card.value.toLocaleString()}
-                      </p>
-                    </div>
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-semibold text-gray-700 mb-1">
-                      {card.title}
-                    </h3>
-                    <p className="text-xs text-gray-500">
-                      {card.description}
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
+        <div className="text-sm text-gray-500">
+          最終更新: {lastUpdate.toLocaleTimeString('ja-JP')}
         </div>
       </div>
-      
+
+      {/* 統計カード */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+        {statsCards.map((card, index) => {
+          const IconComponent = card.icon;
+          return (
+            <Card key={index} className="relative overflow-hidden border-0 shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
+              <CardContent className="p-6">
+                <div className={`inline-flex items-center justify-center w-12 h-12 rounded-lg ${card.bgColor} mb-4`}>
+                  <IconComponent className={`w-6 h-6 ${card.color}`} />
+                </div>
+                <div className="space-y-2">
+                  <p className="text-sm font-medium text-gray-600">{card.title}</p>
+                  <p className="text-3xl font-bold text-gray-900">{card.value.toLocaleString()}</p>
+                  <p className="text-xs text-gray-500">{card.description}</p>
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
+
       {/* AI質問履歴 */}
       <div>
         <div className="flex items-center mb-6">
-          <Zap className="w-6 h-6 text-gray-600 mr-2" />
-          <h2 className="text-xl font-bold text-gray-900">最近のAI質問</h2>
+          <Bot className="w-6 h-6 text-gray-600 mr-2" />
+          <h2 className="text-xl font-bold text-gray-900">AI質問履歴</h2>
+          <span className="ml-2 text-sm text-gray-500">（最新10件）</span>
         </div>
         <AiQuestionsTable aiQuestions={aiQuestions} />
       </div>
@@ -297,6 +349,7 @@ export function RealtimeDashboard({
         <div className="flex items-center mb-6">
           <Users className="w-6 h-6 text-gray-600 mr-2" />
           <h2 className="text-xl font-bold text-gray-900">閲覧者一覧</h2>
+          <span className="ml-2 text-sm text-gray-500">（関心度順）</span>
         </div>
         <ViewersTable viewers={viewers} />
       </div>
