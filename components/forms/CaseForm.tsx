@@ -117,35 +117,83 @@ export function CaseForm({ initialData, isEditing = false }: CaseFormProps) {
 
       // 画像のアップロード処理
       if (images.length > 0) {
-        for (let i = 0; i < images.length; i++) {
-          const file = images[i];
-          const fileExt = file.name.split('.').pop();
-          const fileName = `${caseId}/${Date.now()}.${fileExt}`;
-          const filePath = `case-images/${fileName}`;
-
-          // Storageに画像をアップロード
-          const { error: uploadError } = await supabase.storage
-            .from('case-images')
-            .upload(filePath, file);
-
-          if (uploadError) {
-            console.error('画像アップロードエラー:', uploadError);
-            continue;
+        try {
+          // バケットの存在確認
+          const { data: buckets, error: bucketsError } = await supabase.storage.listBuckets();
+          
+          if (bucketsError) {
+            console.error('バケット一覧取得エラー:', bucketsError);
+            throw new Error('ストレージバケットの確認に失敗しました');
           }
-
-          // 画像のURLを取得
-          const { data: urlData } = supabase.storage
-            .from('case-images')
-            .getPublicUrl(filePath);
-
-          // 画像情報をデータベースに保存
-          await supabase.from('case_images').insert({
-            case_id: caseId,
-            tenant_id: userData.tenant_id,
-            image_url: urlData.publicUrl,
-            image_path: filePath,
-            display_order: i,
+          
+          const bucketExists = buckets.some(bucket => bucket.name === 'case-images');
+          
+          if (!bucketExists) {
+            console.error('case-imagesバケットが存在しません');
+            throw new Error('画像保存用のストレージが設定されていません。管理者に連絡してください。');
+          }
+          
+          // 並列処理で画像をアップロード
+          const uploadPromises = images.map(async (file, i) => {
+            try {
+              const fileExt = file.name.split('.').pop();
+              const fileName = `${caseId}/${Date.now()}-${i}.${fileExt}`;
+              const filePath = `case-images/${fileName}`;
+              
+              // Storageに画像をアップロード
+              const { error: uploadError } = await supabase.storage
+                .from('case-images')
+                .upload(filePath, file, {
+                  cacheControl: '3600',
+                  upsert: false
+                });
+              
+              if (uploadError) {
+                console.error(`画像「${file.name}」のアップロードエラー:`, uploadError);
+                throw new Error(`画像「${file.name}」のアップロードに失敗しました: ${uploadError.message}`);
+              }
+              
+              // 画像のURLを取得
+              const { data: urlData } = supabase.storage
+                .from('case-images')
+                .getPublicUrl(filePath);
+              
+              if (!urlData || !urlData.publicUrl) {
+                throw new Error(`画像「${file.name}」の公開URLの取得に失敗しました`);
+              }
+              
+              // 画像情報をデータベースに保存
+              const { error: insertError } = await supabase.from('case_images').insert({
+                case_id: caseId,
+                tenant_id: userData.tenant_id,
+                image_url: urlData.publicUrl,
+                image_path: filePath,
+                display_order: i,
+              });
+              
+              if (insertError) {
+                console.error('画像情報の保存エラー:', insertError);
+                throw new Error(`画像「${file.name}」の情報をデータベースに保存できませんでした`);
+              }
+              
+              return { success: true, fileName: file.name };
+            } catch (error: any) {
+              return { success: false, fileName: file.name, error: error.message };
+            }
           });
+          
+          // すべてのアップロード処理を待機
+          const results = await Promise.all(uploadPromises);
+          
+          // 失敗した画像があるか確認
+          const failedUploads = results.filter(result => !result.success);
+          if (failedUploads.length > 0) {
+            console.error('一部の画像のアップロードに失敗しました:', failedUploads);
+            throw new Error(`${failedUploads.length}枚の画像のアップロードに失敗しました。事例データは保存されました。`);
+          }
+        } catch (uploadError: any) {
+          console.error('画像アップロード処理エラー:', uploadError);
+          throw new Error(uploadError.message || '画像のアップロードに失敗しました。事例データは保存されました。');
         }
       }
 
