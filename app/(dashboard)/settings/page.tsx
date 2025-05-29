@@ -1,25 +1,22 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
-import { Badge } from '@/components/ui/badge';
+import { Textarea } from '@/components/ui/textarea';
+import { LoadingState } from '@/components/ui/loading-state';
+import { ErrorState } from '@/components/ui/error-state';
+import { PageHeader } from '@/components/ui/page-header';
+import { usePageData } from '@/hooks/usePageData';
 import { 
   Settings, 
   User, 
-  Building2, 
-  Shield, 
   Bell, 
-  Database,
-  Key,
-  Mail,
-  Phone,
+  Shield, 
   Save,
-  AlertCircle,
-  CheckCircle,
   Eye,
   EyeOff
 } from 'lucide-react';
@@ -28,421 +25,450 @@ import { createClient } from '@/lib/supabase/client';
 interface UserProfile {
   id: string;
   email: string;
-  full_name: string | null;
-  role: string;
+  company_name: string;
+  full_name: string;
+  position: string | null;
+  phone: string | null;
+  case_id: string;
   tenant_id: string;
   created_at: string;
-  updated_at: string;
-  // 追加フィールド（実際のテーブルにない場合はローカル状態で管理）
-  company_name?: string;
-  position?: string;
-  phone?: string;
 }
 
 interface NotificationSettings {
   email_notifications: boolean;
-  new_inquiries: boolean;
-  ai_questions: boolean;
+  marketing_emails: boolean;
+  security_alerts: boolean;
   weekly_reports: boolean;
 }
 
+interface SecuritySettings {
+  two_factor_enabled: boolean;
+  login_alerts: boolean;
+  session_timeout: number;
+}
+
+const fetchUserData = async () => {
+  const supabase = createClient();
+  
+  // 現在のユーザー情報を取得
+  const { data: { user }, error: userError } = await supabase.auth.getUser();
+  if (userError || !user) throw new Error('ユーザー情報の取得に失敗しました');
+
+  // プロフィール情報を取得
+  const { data: profile, error: profileError } = await supabase
+    .from('viewers')
+    .select('*')
+    .eq('email', user.email || '')
+    .single();
+
+  if (profileError) throw new Error('プロフィール情報の取得に失敗しました');
+
+  return {
+    profile,
+    notifications: {
+      email_notifications: true,
+      marketing_emails: false,
+      security_alerts: true,
+      weekly_reports: true
+    } as NotificationSettings,
+    security: {
+      two_factor_enabled: false,
+      login_alerts: true,
+      session_timeout: 30
+    } as SecuritySettings
+  };
+};
+
 export default function SettingsPage() {
-  const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [notifications, setNotifications] = useState<NotificationSettings>({
-    email_notifications: true,
-    new_inquiries: true,
-    ai_questions: true,
-    weekly_reports: false
+  const { data, loading, error, refetch } = usePageData({
+    fetchFn: fetchUserData,
+    initialData: null
   });
-  const [loading, setLoading] = useState(true);
+
+  const [activeTab, setActiveTab] = useState<'profile' | 'notifications' | 'security'>('profile');
   const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const [showApiKey, setShowApiKey] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [formData, setFormData] = useState({
+    profile: {
+      id: '',
+      email: '',
+      company_name: '',
+      full_name: '',
+      position: '',
+      phone: '',
+      case_id: '',
+      tenant_id: '',
+      created_at: ''
+    },
+    notifications: {
+      email_notifications: true,
+      marketing_emails: false,
+      security_alerts: true,
+      weekly_reports: true
+    },
+    security: {
+      two_factor_enabled: false,
+      login_alerts: true,
+      session_timeout: 30
+    }
+  });
 
-  useEffect(() => {
-    fetchProfile();
-  }, []);
+  // データが読み込まれたらフォームデータを更新
+  if (data && Object.keys(formData.profile).length === 0) {
+    setFormData({
+      profile: data.profile,
+      notifications: data.notifications,
+      security: data.security
+    });
+  }
 
-  const fetchProfile = async () => {
+  const handleSave = async () => {
+    if (!data) return;
+    
     try {
-      setLoading(true);
+      setSaving(true);
       const supabase = createClient();
-      
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return;
 
-      // プロフィール情報を取得（実際のテーブル構造に合わせて調整）
-      const { data: userData, error } = await supabase
-        .from('users')
-        .select('*')
-        .eq('id', session.user.id)
-        .single();
+      if (activeTab === 'profile') {
+        const { error } = await supabase
+          .from('viewers')
+          .update({
+            company_name: formData.profile.company_name,
+            full_name: formData.profile.full_name,
+            position: formData.profile.position,
+            phone: formData.profile.phone,
+          })
+          .eq('id', formData.profile.id);
 
-      if (error && error.code !== 'PGRST116') {
-        console.error('Profile fetch error:', error);
-      } else if (userData) {
-        setProfile(userData);
-      } else {
-        // ユーザーデータが存在しない場合のデフォルト値
-        setProfile({
-          id: session.user.id,
-          email: session.user.email || '',
-          full_name: null,
-          role: '',
-          tenant_id: '',
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        });
+        if (error) throw error;
       }
+
+      // 通知設定とセキュリティ設定は実際のテーブルがないため、
+      // ここではローカル状態のみ更新
+      
+      await refetch();
+      alert('設定が保存されました');
     } catch (error) {
-      console.error('Settings fetch error:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleProfileUpdate = async () => {
-    if (!profile) return;
-
-    try {
-      setSaving(true);
-      const supabase = createClient();
-
-      // usersテーブルの実際のフィールドのみ更新
-      const { error } = await supabase
-        .from('users')
-        .update({
-          full_name: profile.full_name,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', profile.id);
-
-      if (error) throw error;
-
-      setMessage({ type: 'success', text: 'プロフィールを更新しました' });
-      setTimeout(() => setMessage(null), 3000);
-    } catch (error) {
-      console.error('Profile update error:', error);
-      setMessage({ type: 'error', text: 'プロフィールの更新に失敗しました' });
-      setTimeout(() => setMessage(null), 3000);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleNotificationUpdate = async () => {
-    try {
-      setSaving(true);
-      // 通知設定の更新ロジック（実装に応じて調整）
-      setMessage({ type: 'success', text: '通知設定を更新しました' });
-      setTimeout(() => setMessage(null), 3000);
-    } catch (error) {
-      console.error('Notification update error:', error);
-      setMessage({ type: 'error', text: '通知設定の更新に失敗しました' });
-      setTimeout(() => setMessage(null), 3000);
+      console.error('Settings save error:', error);
+      alert('設定の保存に失敗しました');
     } finally {
       setSaving(false);
     }
   };
 
   if (loading) {
+    return <LoadingState message="設定を読み込み中..." />;
+  }
+
+  if (error) {
     return (
-      <div className="min-h-screen bg-gray-50 p-6">
-        <div className="max-w-4xl mx-auto">
-          <div className="flex items-center justify-center h-64">
-            <div className="flex items-center space-x-2">
-              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
-              <span className="text-gray-600">設定を読み込み中...</span>
-            </div>
-          </div>
-        </div>
-      </div>
+      <ErrorState 
+        message={error}
+        onRetry={refetch}
+      />
     );
   }
 
+  if (!data) return null;
+
+  const tabs = [
+    { id: 'profile', label: 'プロフィール', icon: User },
+    { id: 'notifications', label: '通知設定', icon: Bell },
+    { id: 'security', label: 'セキュリティ', icon: Shield }
+  ] as const;
+
   return (
     <div className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-4xl mx-auto space-y-6">
-        {/* ヘッダー */}
-        <div className="bg-white rounded-lg shadow-sm border p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900 flex items-center">
-                <Settings className="h-6 w-6 mr-2 text-gray-600" />
-                設定
-              </h1>
-              <p className="text-gray-600 mt-1">アカウント情報と通知設定の管理</p>
-            </div>
-            {message && (
-              <div className={`flex items-center space-x-2 px-4 py-2 rounded-lg ${
-                message.type === 'success' 
-                  ? 'bg-green-100 text-green-800' 
-                  : 'bg-red-100 text-red-800'
-              }`}>
-                {message.type === 'success' ? (
-                  <CheckCircle className="h-4 w-4" />
-                ) : (
-                  <AlertCircle className="h-4 w-4" />
-                )}
-                <span className="text-sm font-medium">{message.text}</span>
-              </div>
-            )}
+      <div className="max-w-4xl mx-auto space-y-8">
+        <PageHeader
+          title="設定"
+          subtitle="アカウント設定と環境設定を管理"
+          icon={Settings}
+        />
+
+        <div className="flex flex-col lg:flex-row gap-8">
+          {/* サイドバー */}
+          <div className="lg:w-64">
+            <Card className="bg-white shadow-sm border">
+              <CardContent className="p-4">
+                <nav className="space-y-2">
+                  {tabs.map((tab) => {
+                    const Icon = tab.icon;
+                    return (
+                      <button
+                        key={tab.id}
+                        onClick={() => setActiveTab(tab.id)}
+                        className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-colors ${
+                          activeTab === tab.id
+                            ? 'bg-blue-100 text-blue-700 border border-blue-200'
+                            : 'text-gray-600 hover:bg-gray-100'
+                        }`}
+                      >
+                        <Icon className="h-4 w-4" />
+                        <span className="text-sm font-medium">{tab.label}</span>
+                      </button>
+                    );
+                  })}
+                </nav>
+              </CardContent>
+            </Card>
           </div>
-        </div>
 
-        {/* プロフィール設定 */}
-        <Card className="bg-white shadow-sm border">
-          <CardHeader>
-            <CardTitle className="flex items-center">
-              <User className="h-5 w-5 mr-2 text-blue-600" />
-              プロフィール情報
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-2">
-                <Label htmlFor="email">メールアドレス</Label>
-                <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-                  <Input
-                    id="email"
-                    type="email"
-                    value={profile?.email || ''}
-                    onChange={(e) => setProfile(prev => prev ? { ...prev, email: e.target.value } : null)}
-                    className="pl-10"
-                    disabled
-                  />
-                </div>
-                <p className="text-xs text-gray-500">メールアドレスは変更できません</p>
-              </div>
+          {/* メインコンテンツ */}
+          <div className="flex-1">
+            <Card className="bg-white shadow-sm border">
+              <CardHeader>
+                <CardTitle className="flex items-center space-x-2">
+                  {(() => {
+                    const Icon = tabs.find(tab => tab.id === activeTab)?.icon || Settings;
+                    return <Icon className="h-5 w-5" />;
+                  })()}
+                  <span>{tabs.find(tab => tab.id === activeTab)?.label}</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-6">
+                {activeTab === 'profile' && (
+                  <div className="space-y-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div className="space-y-2">
+                        <Label htmlFor="company_name">会社名 *</Label>
+                        <Input
+                          id="company_name"
+                          value={formData.profile.company_name || ''}
+                          onChange={(e) => setFormData(prev => ({
+                            ...prev,
+                            profile: { ...prev.profile, company_name: e.target.value }
+                          }))}
+                          placeholder="株式会社サンプル"
+                        />
+                      </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="full_name">氏名</Label>
-                <Input
-                  id="full_name"
-                  value={profile?.full_name || ''}
-                  onChange={(e) => setProfile(prev => prev ? { ...prev, full_name: e.target.value } : null)}
-                  placeholder="山田 太郎"
-                />
-              </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="full_name">氏名 *</Label>
+                        <Input
+                          id="full_name"
+                          value={formData.profile.full_name || ''}
+                          onChange={(e) => setFormData(prev => ({
+                            ...prev,
+                            profile: { ...prev.profile, full_name: e.target.value }
+                          }))}
+                          placeholder="山田 太郎"
+                        />
+                      </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="company_name">会社名</Label>
-                <div className="relative">
-                  <Building2 className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-                  <Input
-                    id="company_name"
-                    value={profile?.company_name || ''}
-                    onChange={(e) => setProfile(prev => prev ? { ...prev, company_name: e.target.value } : null)}
-                    className="pl-10"
-                    placeholder="株式会社サンプル"
-                    disabled
-                  />
-                </div>
-                <p className="text-xs text-gray-500">会社名は現在編集できません</p>
-              </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="position">役職</Label>
+                        <Input
+                          id="position"
+                          value={formData.profile.position || ''}
+                          onChange={(e) => setFormData(prev => ({
+                            ...prev,
+                            profile: { ...prev.profile, position: e.target.value }
+                          }))}
+                          placeholder="営業部長"
+                        />
+                      </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="position">役職</Label>
-                <Input
-                  id="position"
-                  value={profile?.position || ''}
-                  onChange={(e) => setProfile(prev => prev ? { ...prev, position: e.target.value } : null)}
-                  placeholder="営業部長"
-                  disabled
-                />
-                <p className="text-xs text-gray-500">役職は現在編集できません</p>
-              </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="phone">電話番号</Label>
+                        <Input
+                          id="phone"
+                          type="tel"
+                          value={formData.profile.phone || ''}
+                          onChange={(e) => setFormData(prev => ({
+                            ...prev,
+                            profile: { ...prev.profile, phone: e.target.value }
+                          }))}
+                          placeholder="03-1234-5678"
+                        />
+                      </div>
 
-              <div className="space-y-2 md:col-span-2">
-                <Label htmlFor="phone">電話番号</Label>
-                <div className="relative">
-                  <Phone className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-                  <Input
-                    id="phone"
-                    value={profile?.phone || ''}
-                    onChange={(e) => setProfile(prev => prev ? { ...prev, phone: e.target.value } : null)}
-                    className="pl-10"
-                    placeholder="03-1234-5678"
-                    disabled
-                  />
-                </div>
-                <p className="text-xs text-gray-500">電話番号は現在編集できません</p>
-              </div>
-            </div>
-
-            <div className="flex justify-end">
-              <Button 
-                onClick={handleProfileUpdate}
-                disabled={saving}
-                className="bg-blue-600 hover:bg-blue-700"
-              >
-                <Save className="h-4 w-4 mr-2" />
-                {saving ? '保存中...' : 'プロフィールを保存'}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* 通知設定 */}
-        <Card className="bg-white shadow-sm border">
-          <CardHeader>
-            <CardTitle className="flex items-center">
-              <Bell className="h-5 w-5 mr-2 text-orange-600" />
-              通知設定
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-medium text-gray-900">メール通知</p>
-                  <p className="text-sm text-gray-600">重要な更新をメールで受け取る</p>
-                </div>
-                <Switch
-                  checked={notifications.email_notifications}
-                  onCheckedChange={(checked) => 
-                    setNotifications(prev => ({ ...prev, email_notifications: checked }))
-                  }
-                />
-              </div>
-
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-medium text-gray-900">新規問い合わせ通知</p>
-                  <p className="text-sm text-gray-600">新しい問い合わせが届いた時に通知</p>
-                </div>
-                <Switch
-                  checked={notifications.new_inquiries}
-                  onCheckedChange={(checked) => 
-                    setNotifications(prev => ({ ...prev, new_inquiries: checked }))
-                  }
-                />
-              </div>
-
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-medium text-gray-900">AI質問通知</p>
-                  <p className="text-sm text-gray-600">新しいAI質問が投稿された時に通知</p>
-                </div>
-                <Switch
-                  checked={notifications.ai_questions}
-                  onCheckedChange={(checked) => 
-                    setNotifications(prev => ({ ...prev, ai_questions: checked }))
-                  }
-                />
-              </div>
-
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-medium text-gray-900">週次レポート</p>
-                  <p className="text-sm text-gray-600">週次アクティビティレポートを受け取る</p>
-                </div>
-                <Switch
-                  checked={notifications.weekly_reports}
-                  onCheckedChange={(checked) => 
-                    setNotifications(prev => ({ ...prev, weekly_reports: checked }))
-                  }
-                />
-              </div>
-            </div>
-
-            <div className="flex justify-end">
-              <Button 
-                onClick={handleNotificationUpdate}
-                disabled={saving}
-                variant="outline"
-              >
-                <Save className="h-4 w-4 mr-2" />
-                {saving ? '保存中...' : '通知設定を保存'}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* セキュリティ設定 */}
-        <Card className="bg-white shadow-sm border">
-          <CardHeader>
-            <CardTitle className="flex items-center">
-              <Shield className="h-5 w-5 mr-2 text-red-600" />
-              セキュリティ
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="space-y-4">
-              <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                <div>
-                  <p className="font-medium text-gray-900">APIキー</p>
-                  <p className="text-sm text-gray-600">外部システム連携用のAPIキー</p>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <div className="relative">
-                    <Input
-                      type={showApiKey ? 'text' : 'password'}
-                      value="sk-1234567890abcdef1234567890abcdef"
-                      readOnly
-                      className="w-64 pr-10"
-                    />
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setShowApiKey(!showApiKey)}
-                      className="absolute right-1 top-1/2 transform -translate-y-1/2 h-8 w-8 p-0"
-                    >
-                      {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    </Button>
+                      <div className="space-y-2">
+                        <Label htmlFor="email">メールアドレス</Label>
+                        <Input
+                          id="email"
+                          type="email"
+                          value={formData.profile.email || ''}
+                          disabled
+                          className="bg-gray-50"
+                        />
+                        <p className="text-xs text-gray-500">メールアドレスは変更できません</p>
+                      </div>
+                    </div>
                   </div>
-                  <Button variant="outline" size="sm">
-                    <Key className="h-4 w-4 mr-2" />
-                    再生成
+                )}
+
+                {activeTab === 'notifications' && (
+                  <div className="space-y-6">
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h4 className="text-sm font-medium text-gray-900">メール通知</h4>
+                          <p className="text-sm text-gray-500">重要な更新をメールで受け取る</p>
+                        </div>
+                        <Switch
+                          checked={formData.notifications.email_notifications}
+                          onCheckedChange={(checked) => setFormData(prev => ({
+                            ...prev,
+                            notifications: { ...prev.notifications, email_notifications: checked }
+                          }))}
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h4 className="text-sm font-medium text-gray-900">マーケティングメール</h4>
+                          <p className="text-sm text-gray-500">新機能やキャンペーン情報を受け取る</p>
+                        </div>
+                        <Switch
+                          checked={formData.notifications.marketing_emails}
+                          onCheckedChange={(checked) => setFormData(prev => ({
+                            ...prev,
+                            notifications: { ...prev.notifications, marketing_emails: checked }
+                          }))}
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h4 className="text-sm font-medium text-gray-900">セキュリティアラート</h4>
+                          <p className="text-sm text-gray-500">不審なアクティビティを検出した際の通知</p>
+                        </div>
+                        <Switch
+                          checked={formData.notifications.security_alerts}
+                          onCheckedChange={(checked) => setFormData(prev => ({
+                            ...prev,
+                            notifications: { ...prev.notifications, security_alerts: checked }
+                          }))}
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h4 className="text-sm font-medium text-gray-900">週次レポート</h4>
+                          <p className="text-sm text-gray-500">アクティビティの週次サマリーを受け取る</p>
+                        </div>
+                        <Switch
+                          checked={formData.notifications.weekly_reports}
+                          onCheckedChange={(checked) => setFormData(prev => ({
+                            ...prev,
+                            notifications: { ...prev.notifications, weekly_reports: checked }
+                          }))}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {activeTab === 'security' && (
+                  <div className="space-y-6">
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h4 className="text-sm font-medium text-gray-900">二要素認証</h4>
+                          <p className="text-sm text-gray-500">アカウントのセキュリティを強化</p>
+                        </div>
+                        <Switch
+                          checked={formData.security.two_factor_enabled}
+                          onCheckedChange={(checked) => setFormData(prev => ({
+                            ...prev,
+                            security: { ...prev.security, two_factor_enabled: checked }
+                          }))}
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h4 className="text-sm font-medium text-gray-900">ログインアラート</h4>
+                          <p className="text-sm text-gray-500">新しいデバイスからのログインを通知</p>
+                        </div>
+                        <Switch
+                          checked={formData.security.login_alerts}
+                          onCheckedChange={(checked) => setFormData(prev => ({
+                            ...prev,
+                            security: { ...prev.security, login_alerts: checked }
+                          }))}
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="session_timeout">セッションタイムアウト（分）</Label>
+                        <Input
+                          id="session_timeout"
+                          type="number"
+                          min="5"
+                          max="120"
+                          value={formData.security.session_timeout}
+                          onChange={(e) => setFormData(prev => ({
+                            ...prev,
+                            security: { ...prev.security, session_timeout: parseInt(e.target.value) || 30 }
+                          }))}
+                        />
+                        <p className="text-xs text-gray-500">5分から120分の間で設定してください</p>
+                      </div>
+                    </div>
+
+                    <div className="border-t pt-6">
+                      <h4 className="text-sm font-medium text-gray-900 mb-4">パスワード変更</h4>
+                      <div className="space-y-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="current_password">現在のパスワード</Label>
+                          <div className="relative">
+                            <Input
+                              id="current_password"
+                              type={showPassword ? "text" : "password"}
+                              placeholder="現在のパスワードを入力"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setShowPassword(!showPassword)}
+                              className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                            >
+                              {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label htmlFor="new_password">新しいパスワード</Label>
+                          <Input
+                            id="new_password"
+                            type={showPassword ? "text" : "password"}
+                            placeholder="新しいパスワードを入力"
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label htmlFor="confirm_password">パスワード確認</Label>
+                          <Input
+                            id="confirm_password"
+                            type={showPassword ? "text" : "password"}
+                            placeholder="新しいパスワードを再入力"
+                          />
+                        </div>
+
+                        <Button variant="outline" className="w-full">
+                          パスワードを変更
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex justify-end pt-6 border-t">
+                  <Button 
+                    onClick={handleSave}
+                    disabled={saving}
+                    className="flex items-center space-x-2"
+                  >
+                    <Save className="h-4 w-4" />
+                    <span>{saving ? '保存中...' : '設定を保存'}</span>
                   </Button>
                 </div>
-              </div>
-
-              <div className="flex items-center justify-between p-4 bg-blue-50 rounded-lg">
-                <div>
-                  <p className="font-medium text-gray-900">パスワード変更</p>
-                  <p className="text-sm text-gray-600">定期的なパスワード変更を推奨します</p>
-                </div>
-                <Button variant="outline">
-                  パスワードを変更
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* システム情報 */}
-        <Card className="bg-white shadow-sm border">
-          <CardHeader>
-            <CardTitle className="flex items-center">
-              <Database className="h-5 w-5 mr-2 text-green-600" />
-              システム情報
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="text-center p-4 bg-gray-50 rounded-lg">
-                <p className="text-sm text-gray-600">アカウント作成日</p>
-                <p className="text-lg font-semibold text-gray-900">
-                  {profile?.created_at ? new Date(profile.created_at).toLocaleDateString('ja-JP') : '-'}
-                </p>
-              </div>
-              <div className="text-center p-4 bg-gray-50 rounded-lg">
-                <p className="text-sm text-gray-600">最終更新日</p>
-                <p className="text-lg font-semibold text-gray-900">
-                  {profile?.updated_at ? new Date(profile.updated_at).toLocaleDateString('ja-JP') : '-'}
-                </p>
-              </div>
-              <div className="text-center p-4 bg-gray-50 rounded-lg">
-                <p className="text-sm text-gray-600">アカウント状態</p>
-                <Badge className="bg-green-100 text-green-800 border-green-200">
-                  アクティブ
-                </Badge>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
       </div>
     </div>
   );
