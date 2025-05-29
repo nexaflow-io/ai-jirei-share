@@ -1,17 +1,25 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { useChat } from 'ai/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { MessageSquare, Send, Bot, User, AlertTriangle, Shield } from 'lucide-react';
+import { Bot, User, Send, MessageSquare, Shield, AlertTriangle } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import { useChat } from 'ai/react';
 
 interface AiChatWidgetProps {
   caseId: string;
   viewerId?: string;
   tenantId?: string;
   isFloating?: boolean;
+}
+
+interface Message {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
 }
 
 // フロントエンド入力検証
@@ -138,9 +146,13 @@ export default function AiChatWidget({
   }
 
   return (
-    <div className={`${isFloating ? 'fixed bottom-4 right-4 z-50 w-96 h-[500px]' : 'w-full h-[600px]'}`}>
-      <Card className="h-full flex flex-col">
-        <CardHeader className="pb-3">
+    <div className={`${
+      isFloating 
+        ? 'fixed bottom-4 right-4 z-50 w-96 max-w-[calc(100vw-2rem)] max-h-[calc(100vh-2rem)]' 
+        : 'w-full h-[600px]'
+    }`}>
+      <Card className="h-full flex flex-col shadow-xl">
+        <CardHeader className="pb-3 flex-shrink-0">
           <div className="flex items-center justify-between">
             <CardTitle className="flex items-center gap-2 text-lg">
               <Bot className="w-5 h-5 text-blue-600" />
@@ -166,9 +178,11 @@ export default function AiChatWidget({
           )}
         </CardHeader>
         
-        <CardContent className="flex-1 flex flex-col p-4">
+        <CardContent className="flex-1 flex flex-col p-4 min-h-0">
           {/* メッセージ表示エリア */}
-          <div className="flex-1 overflow-y-auto space-y-4 mb-4">
+          <div className={`flex-1 overflow-y-auto space-y-4 mb-4 ${
+            isFloating ? 'max-h-[400px]' : ''
+          }`}>
             {messages.length === 0 && (
               <div className="text-center text-gray-500 py-8">
                 <Bot className="w-12 h-12 mx-auto mb-4 text-gray-400" />
@@ -209,7 +223,31 @@ export default function AiChatWidget({
                         : 'bg-gray-100 text-gray-900'
                     }`}
                   >
-                    <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                    {message.role === 'user' ? (
+                      <p className="text-sm whitespace-pre-wrap break-words">{message.content}</p>
+                    ) : (
+                      <div className="text-sm">
+                        <ReactMarkdown 
+                          remarkPlugins={[remarkGfm]}
+                          components={{
+                            p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+                            strong: ({ children }) => <strong className="font-semibold text-gray-900">{children}</strong>,
+                            ul: ({ children }) => <ul className="list-disc list-inside mb-2 space-y-1 ml-2">{children}</ul>,
+                            ol: ({ children }) => <ol className="list-decimal list-inside mb-2 space-y-1 ml-2">{children}</ol>,
+                            li: ({ children }) => <li className="text-sm leading-relaxed">{children}</li>,
+                            h1: ({ children }) => <h1 className="text-base font-bold mb-2 text-gray-900">{children}</h1>,
+                            h2: ({ children }) => <h2 className="text-sm font-bold mb-2 text-gray-900">{children}</h2>,
+                            h3: ({ children }) => <h3 className="text-sm font-semibold mb-1 text-gray-900">{children}</h3>,
+                            code: ({ children }) => <code className="bg-gray-200 px-1 py-0.5 rounded text-xs font-mono">{children}</code>,
+                            pre: ({ children }) => <pre className="bg-gray-200 p-2 rounded text-xs overflow-x-auto font-mono">{children}</pre>,
+                            em: ({ children }) => <em className="italic">{children}</em>,
+                            blockquote: ({ children }) => <blockquote className="border-l-4 border-gray-300 pl-3 italic text-gray-700">{children}</blockquote>
+                          }}
+                        >
+                          {message.content}
+                        </ReactMarkdown>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -236,45 +274,47 @@ export default function AiChatWidget({
           </div>
 
           {/* 入力フォーム */}
-          <form onSubmit={handleSecureSubmit} className="space-y-2">
-            {inputError && (
-              <div className="text-sm text-red-600 bg-red-50 p-2 rounded border border-red-200">
-                {inputError}
+          <div className="flex-shrink-0">
+            <form onSubmit={handleSecureSubmit} className="space-y-2">
+              {inputError && (
+                <div className="text-sm text-red-600 bg-red-50 p-2 rounded border border-red-200">
+                  {inputError}
+                </div>
+              )}
+              
+              <div className="flex gap-2">
+                <Input
+                  value={input}
+                  onChange={handleInputChangeWithValidation}
+                  placeholder="建設事例について質問してください..."
+                  disabled={isLoading}
+                  className="flex-1"
+                  maxLength={1000}
+                />
+                <Button 
+                  type="submit" 
+                  disabled={isLoading || !input.trim() || !!inputError}
+                  className="px-4"
+                >
+                  <Send className="w-4 h-4" />
+                </Button>
+              </div>
+              
+              <div className="flex justify-between items-center text-xs text-gray-500">
+                <span>{input.length}/1000文字</span>
+                <span className="flex items-center gap-1">
+                  <Shield className="w-3 h-3" />
+                  セキュリティ保護済み
+                </span>
+              </div>
+            </form>
+
+            {error && (
+              <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded text-sm text-red-600">
+                エラーが発生しました: {error.message}
               </div>
             )}
-            
-            <div className="flex gap-2">
-              <Input
-                value={input}
-                onChange={handleInputChangeWithValidation}
-                placeholder="建設事例について質問してください..."
-                disabled={isLoading}
-                className="flex-1"
-                maxLength={1000}
-              />
-              <Button 
-                type="submit" 
-                disabled={isLoading || !input.trim() || !!inputError}
-                className="px-4"
-              >
-                <Send className="w-4 h-4" />
-              </Button>
-            </div>
-            
-            <div className="flex justify-between items-center text-xs text-gray-500">
-              <span>{input.length}/1000文字</span>
-              <span className="flex items-center gap-1">
-                <Shield className="w-3 h-3" />
-                セキュリティ保護済み
-              </span>
-            </div>
-          </form>
-
-          {error && (
-            <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded text-sm text-red-600">
-              エラーが発生しました: {error.message}
-            </div>
-          )}
+          </div>
         </CardContent>
       </Card>
     </div>
