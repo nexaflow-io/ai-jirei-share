@@ -1,5 +1,5 @@
-import { createServerClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
+import { createServerClient } from '@/lib/supabase/server';
 import InquiriesTable from '@/components/dashboard/InquiriesTable';
 import { MessageSquare, TrendingUp, Clock } from 'lucide-react';
 
