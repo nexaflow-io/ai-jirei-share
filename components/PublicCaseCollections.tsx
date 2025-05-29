@@ -68,7 +68,7 @@ export function PublicCaseCollections() {
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
         {tenants.map((tenant) => (
           <Link 
-            href={`/cases/${tenant.id}`} 
+            href={`/case-collections/${tenant.id}`} 
             key={tenant.id}
             className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow duration-300 flex items-center justify-between"
           >
