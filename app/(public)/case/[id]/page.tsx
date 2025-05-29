@@ -272,7 +272,11 @@ export default async function CasePage({ params }: CasePageProps) {
 
                 {/* AIチャット機能 */}
                 <div className="bg-white/70 backdrop-blur-sm rounded-xl border border-white/20 shadow-lg overflow-hidden">
-                  <AiChatWrapper caseId={params.id} viewerId={viewerId} />
+                  <AiChatWrapper 
+                    caseId={params.id} 
+                    viewerId={viewerId} 
+                    caseName={caseData.name}
+                  />
                 </div>
 
                 {/* お問い合わせカード */}

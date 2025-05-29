@@ -12,6 +12,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import { Loader2, Building2, Calendar, User } from 'lucide-react';
 import { ViewerInfoForm } from '@/components/ViewerInfoForm';
+import AiChatWidget from '@/components/AiChatWidget';
 
 type CasesPageProps = {
   params: { id: string };
@@ -288,6 +289,13 @@ export default function CasesPage({ params }: CasesPageProps) {
           </Button>
         </div>
       </div>
+      {tenantData && (
+        <AiChatWidget 
+          caseId="general" 
+          caseName={`${tenantData.name}の事例について`}
+          position="bottom-right"
+        />
+      )}
     </div>
   );
 }

@@ -1,13 +1,22 @@
 'use client';
 
 import React from 'react';
-import { AiChat } from './AiChat';
+import AiChatWidget from '../AiChatWidget';
 
 interface AiChatWrapperProps {
   caseId: string;
   viewerId?: string;
+  caseName?: string;
 }
 
-export function AiChatWrapper({ caseId, viewerId }: AiChatWrapperProps) {
-  return <AiChat caseId={caseId} viewerId={viewerId} />;
+export function AiChatWrapper({ caseId, viewerId, caseName }: AiChatWrapperProps) {
+  return (
+    <AiChatWidget 
+      caseId={caseId} 
+      viewerId={viewerId} 
+      caseName={caseName || "この事例"}
+      position="inline"
+      className="w-full"
+    />
+  );
 }
