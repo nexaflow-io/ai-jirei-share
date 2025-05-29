@@ -4,6 +4,17 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
+import { 
+  LayoutDashboard, 
+  FileText, 
+  MessageSquare, 
+  Settings, 
+  LogOut, 
+  Menu, 
+  X,
+  Building2,
+  User
+} from 'lucide-react';
 
 export default function DashboardLayout({
   children,
@@ -19,71 +30,119 @@ export default function DashboardLayout({
   };
 
   const navItems = [
-    { name: 'ダッシュボード', href: '/dashboard' },
-    { name: '事例管理', href: '/cases' },
-    { name: '問い合わせ', href: '/inquiries' },
-    { name: '設定', href: '/settings' },
+    { 
+      name: 'ダッシュボード', 
+      href: '/dashboard', 
+      icon: LayoutDashboard,
+      description: '概要とアナリティクス'
+    },
+    { 
+      name: '事例管理', 
+      href: '/cases', 
+      icon: FileText,
+      description: '施工事例の管理'
+    },
+    { 
+      name: '問い合わせ', 
+      href: '/inquiries', 
+      icon: MessageSquare,
+      description: 'お客様からの問い合わせ'
+    },
+    { 
+      name: '設定', 
+      href: '/settings', 
+      icon: Settings,
+      description: 'アカウント設定'
+    },
   ];
 
   return (
-    <div className="min-h-screen bg-gray-100">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
       {/* モバイルヘッダー */}
-      <div className="bg-white shadow-sm lg:hidden">
+      <div className="bg-white/95 backdrop-blur-sm shadow-sm border-b border-gray-200 lg:hidden sticky top-0 z-50">
         <div className="flex items-center justify-between p-4">
-          <Link href="/dashboard" className="font-bold text-xl">
-            AI事例シェア
+          <Link href="/dashboard" className="flex items-center space-x-3">
+            <div className="w-8 h-8 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-lg flex items-center justify-center">
+              <Building2 className="w-5 h-5 text-white" />
+            </div>
+            <span className="font-bold text-xl text-gray-900">AI事例シェア</span>
           </Link>
           <button
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-            className="p-2"
+            className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
           >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              fill="none"
-              viewBox="0 0 24 24"
-              strokeWidth={1.5}
-              stroke="currentColor"
-              className="w-6 h-6"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5"
-              />
-            </svg>
+            <Menu className="w-6 h-6 text-gray-600" />
           </button>
         </div>
       </div>
 
       <div className="flex">
         {/* サイドバー（デスクトップ） */}
-        <div className="hidden lg:flex lg:w-64 lg:flex-col lg:fixed lg:inset-y-0">
-          <div className="flex flex-col flex-grow pt-5 overflow-y-auto bg-white border-r">
-            <div className="px-4 pb-2 flex flex-shrink-0 items-center">
-              <Link href="/dashboard" className="font-bold text-xl">
-                AI事例シェア
+        <div className="hidden lg:flex lg:w-72 lg:flex-col lg:fixed lg:inset-y-0">
+          <div className="flex flex-col flex-grow bg-white/95 backdrop-blur-sm border-r border-gray-200 shadow-sm">
+            {/* ロゴエリア */}
+            <div className="px-6 py-6 border-b border-gray-200">
+              <Link href="/dashboard" className="flex items-center space-x-3">
+                <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-xl flex items-center justify-center">
+                  <Building2 className="w-6 h-6 text-white" />
+                </div>
+                <div>
+                  <div className="font-bold text-xl text-gray-900">AI事例シェア</div>
+                  <div className="text-sm text-gray-500">管理画面</div>
+                </div>
               </Link>
             </div>
-            <nav className="flex-1 px-2 pb-4 space-y-1 mt-5">
-              {navItems.map((item) => (
-                <Link
-                  key={item.name}
-                  href={item.href}
-                  className={`group flex items-center px-2 py-2 text-sm font-medium rounded-md ${
-                    pathname.startsWith(item.href)
-                      ? 'bg-gray-100 text-gray-900'
-                      : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-                  }`}
-                >
-                  {item.name}
-                </Link>
-              ))}
+
+            {/* ナビゲーション */}
+            <nav className="flex-1 px-4 py-6 space-y-2">
+              {navItems.map((item) => {
+                const Icon = item.icon;
+                const isActive = pathname.startsWith(item.href);
+                
+                return (
+                  <Link
+                    key={item.name}
+                    href={item.href}
+                    className={`group flex items-center px-4 py-3 text-sm font-medium rounded-xl transition-all duration-200 ${
+                      isActive
+                        ? 'bg-gradient-to-r from-blue-50 to-indigo-50 text-blue-700 border border-blue-200 shadow-sm'
+                        : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                    }`}
+                  >
+                    <Icon className={`mr-3 h-5 w-5 transition-colors ${
+                      isActive ? 'text-blue-600' : 'text-gray-400 group-hover:text-gray-600'
+                    }`} />
+                    <div className="flex-1">
+                      <div className="font-medium">{item.name}</div>
+                      <div className={`text-xs ${
+                        isActive ? 'text-blue-600' : 'text-gray-400'
+                      }`}>
+                        {item.description}
+                      </div>
+                    </div>
+                  </Link>
+                );
+              })}
             </nav>
-            <div className="flex-shrink-0 p-4 border-t">
+
+            {/* ユーザー情報とログアウト */}
+            <div className="border-t border-gray-200 p-4">
+              <div className="flex items-center space-x-3 mb-4 px-2">
+                <div className="w-8 h-8 bg-gradient-to-br from-gray-400 to-gray-600 rounded-lg flex items-center justify-center">
+                  <User className="w-4 h-4 text-white" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium text-gray-900 truncate">
+                    {user?.email || 'ユーザー'}
+                  </div>
+                  <div className="text-xs text-gray-500">管理者</div>
+                </div>
+              </div>
               <button
                 onClick={handleSignOut}
-                className="w-full flex items-center justify-center px-4 py-2 text-sm text-red-600 hover:text-red-700"
+                className="w-full flex items-center justify-center px-4 py-2 text-sm font-medium text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
               >
+                <LogOut className="w-4 h-4 mr-2" />
                 ログアウト
               </button>
             </div>
@@ -92,57 +151,79 @@ export default function DashboardLayout({
 
         {/* モバイルメニュー */}
         {isMobileMenuOpen && (
-          <div className="fixed inset-0 flex z-40 lg:hidden">
+          <div className="fixed inset-0 flex z-50 lg:hidden">
             <div
-              className="fixed inset-0 bg-gray-600 bg-opacity-75"
+              className="fixed inset-0 bg-gray-900/50 backdrop-blur-sm"
               onClick={() => setIsMobileMenuOpen(false)}
             ></div>
-            <div className="relative flex-1 flex flex-col max-w-xs w-full bg-white">
-              <div className="flex-1 h-0 overflow-y-auto">
-                <div className="flex items-center justify-between p-4 border-b">
-                  <div className="font-bold text-xl">AI事例シェア</div>
-                  <button
-                    onClick={() => setIsMobileMenuOpen(false)}
-                    className="p-2"
-                  >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      strokeWidth={1.5}
-                      stroke="currentColor"
-                      className="w-6 h-6"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        d="M6 18L18 6M6 6l12 12"
-                      />
-                    </svg>
-                  </button>
+            <div className="relative flex-1 flex flex-col max-w-xs w-full bg-white/95 backdrop-blur-sm">
+              {/* モバイルメニューヘッダー */}
+              <div className="flex items-center justify-between p-4 border-b border-gray-200">
+                <div className="flex items-center space-x-3">
+                  <div className="w-8 h-8 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-lg flex items-center justify-center">
+                    <Building2 className="w-5 h-5 text-white" />
+                  </div>
+                  <div className="font-bold text-lg text-gray-900">AI事例シェア</div>
                 </div>
-                <nav className="mt-5 px-2 space-y-1">
-                  {navItems.map((item) => (
+                <button
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
+                >
+                  <X className="w-5 h-5 text-gray-600" />
+                </button>
+              </div>
+
+              {/* モバイルナビゲーション */}
+              <nav className="flex-1 px-4 py-6 space-y-2 overflow-y-auto">
+                {navItems.map((item) => {
+                  const Icon = item.icon;
+                  const isActive = pathname.startsWith(item.href);
+                  
+                  return (
                     <Link
                       key={item.name}
                       href={item.href}
-                      className={`group flex items-center px-2 py-2 text-base font-medium rounded-md ${
-                        pathname.startsWith(item.href)
-                          ? 'bg-gray-100 text-gray-900'
+                      className={`group flex items-center px-4 py-3 text-sm font-medium rounded-xl transition-all duration-200 ${
+                        isActive
+                          ? 'bg-gradient-to-r from-blue-50 to-indigo-50 text-blue-700 border border-blue-200'
                           : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
                       }`}
                       onClick={() => setIsMobileMenuOpen(false)}
                     >
-                      {item.name}
+                      <Icon className={`mr-3 h-5 w-5 ${
+                        isActive ? 'text-blue-600' : 'text-gray-400'
+                      }`} />
+                      <div>
+                        <div className="font-medium">{item.name}</div>
+                        <div className={`text-xs ${
+                          isActive ? 'text-blue-600' : 'text-gray-400'
+                        }`}>
+                          {item.description}
+                        </div>
+                      </div>
                     </Link>
-                  ))}
-                </nav>
-              </div>
-              <div className="flex-shrink-0 p-4 border-t">
+                  );
+                })}
+              </nav>
+
+              {/* モバイルユーザー情報 */}
+              <div className="border-t border-gray-200 p-4">
+                <div className="flex items-center space-x-3 mb-4 px-2">
+                  <div className="w-8 h-8 bg-gradient-to-br from-gray-400 to-gray-600 rounded-lg flex items-center justify-center">
+                    <User className="w-4 h-4 text-white" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium text-gray-900 truncate">
+                      {user?.email || 'ユーザー'}
+                    </div>
+                    <div className="text-xs text-gray-500">管理者</div>
+                  </div>
+                </div>
                 <button
                   onClick={handleSignOut}
-                  className="w-full flex items-center justify-center px-4 py-2 text-sm text-red-600 hover:text-red-700"
+                  className="w-full flex items-center justify-center px-4 py-2 text-sm font-medium text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
                 >
+                  <LogOut className="w-4 h-4 mr-2" />
                   ログアウト
                 </button>
               </div>
@@ -151,10 +232,12 @@ export default function DashboardLayout({
         )}
 
         {/* メインコンテンツ */}
-        <main className="flex-1 lg:pl-64">
-          {children}
+        <main className="flex-1 lg:pl-72">
+          <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+            {children}
+          </div>
         </main>
       </div>
     </div>
   );
-} 
+}
