@@ -55,49 +55,78 @@ export function ViewerInfoForm({ caseId, tenantId, onComplete }: ViewerInfoFormP
   const onSubmit = async (values: ViewerFormValues) => {
     try {
       setIsSubmitting(true);
+      console.log('送信開始:', { values, caseId, tenantId });
+      
+      // データの確認
+      if (!tenantId || !caseId) {
+        console.error('必要なデータが不足しています:', { tenantId, caseId });
+        alert('データが不足しています。ページを再読み込みしてください。');
+        return;
+      }
       
       // 閲覧者情報をデータベースに保存
-      const { data: viewerData, error: viewerError } = await supabase
+      const viewerData = {
+        case_id: caseId,
+        tenant_id: tenantId,
+        company_name: values.company_name,
+        position: values.position,
+        full_name: values.full_name,
+        email: values.email,
+        phone: values.phone,
+        created_at: new Date().toISOString()
+      };
+      
+      console.log('送信するデータ:', viewerData);
+      
+      const { data, error: viewerError } = await supabase
         .from('viewers')
-        .insert({
-          case_id: caseId,
-          tenant_id: tenantId,
-          ...values
-        })
+        .insert(viewerData)
         .select('id')
         .single();
       
       if (viewerError) {
-        throw viewerError;
+        console.error('Supabaseエラー:', viewerError);
+        throw new Error(`閲覧者情報の保存に失敗しました: ${viewerError.message}`);
       }
       
-      // LocalStorageに閲覧者情報を保存（次回以降の入力スキップ用）
-      localStorage.setItem('viewer_info', JSON.stringify({
-        ...values,
-        id: viewerData.id,
-        timestamp: new Date().toISOString(),
-      }));
+      if (!data || !data.id) {
+        console.error('データが返されませんでした');
+        throw new Error('データが正しく保存されませんでした');
+      }
       
-      // アクセスログを記録
+      console.log('閲覧者情報保存成功:', data);
+      
+      // LocalStorageに閲覧者情報を保存（次回以降の入力スキップ用）
+      const storageData = {
+        ...values,
+        id: data.id,
+        timestamp: new Date().toISOString(),
+      };
+      
+      localStorage.setItem('viewer_info', JSON.stringify(storageData));
+      console.log('localStorageに保存完了');
+      
+      // アクセスログの記録は必須ではないので、エラーが発生しても続行
       try {
         await supabase
           .from('access_logs')
           .insert({
             case_id: caseId,
-            viewer_id: viewerData.id,
+            viewer_id: data.id,
             tenant_id: tenantId,
             referer: window.location.href,
           });
+        console.log('アクセスログ記録成功');
       } catch (logError) {
         console.error('アクセスログ記録エラー:', logError);
-        // アクセスログの記録に失敗しても処理を続行
       }
       
       // 完了通知
+      console.log('処理完了、コールバック実行');
       onComplete();
     } catch (error) {
       console.error('閲覧者情報送信エラー:', error);
-      alert('情報の送信に失敗しました。もう一度お試しください。');
+      alert(`情報の送信に失敗しました: ${error instanceof Error ? error.message : '不明なエラー'}`); 
     } finally {
       setIsSubmitting(false);
     }
