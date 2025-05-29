@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Carousel } from '@/components/ui/carousel';
 import { ChevronLeft, Building2, User, Calendar, MapPin, Phone, Mail } from 'lucide-react';
-import { AiChatWrapper } from '@/components/ai/AiChatWrapper';
+import AiChatWidget from '@/components/AiChatWidget';
 import { formatDistanceToNow } from 'date-fns';
 import { ja } from 'date-fns/locale';
 
@@ -272,10 +272,12 @@ export default async function CasePage({ params }: CasePageProps) {
 
                 {/* AIチャット機能 */}
                 <div className="bg-white/70 backdrop-blur-sm rounded-xl border border-white/20 shadow-lg overflow-hidden">
-                  <AiChatWrapper 
+                  <AiChatWidget 
                     caseId={params.id} 
                     viewerId={viewerId} 
                     caseName={caseData.name}
+                    tenantId={caseData.tenant_id}
+                    position="inline"
                   />
                 </div>
 

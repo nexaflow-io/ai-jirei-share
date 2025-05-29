@@ -2,331 +2,281 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { useChat } from 'ai/react';
-import { 
-  MessageCircle, 
-  Send, 
-  Bot, 
-  User, 
-  X, 
-  Minimize2, 
-  Maximize2,
-  AlertCircle,
-  Loader2
-} from 'lucide-react';
-import { format } from 'date-fns';
-import { ja } from 'date-fns/locale';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { MessageSquare, Send, Bot, User, AlertTriangle, Shield } from 'lucide-react';
 
 interface AiChatWidgetProps {
   caseId: string;
   viewerId?: string;
-  caseName: string;
-  position?: 'bottom-right' | 'bottom-left' | 'inline';
-  className?: string;
+  tenantId?: string;
+  isFloating?: boolean;
 }
+
+// フロントエンド入力検証
+const validateInput = (input: string): { isValid: boolean; error?: string } => {
+  if (!input.trim()) {
+    return { isValid: false, error: '質問を入力してください' };
+  }
+  
+  if (input.length > 1000) {
+    return { isValid: false, error: '質問は1000文字以内で入力してください' };
+  }
+  
+  // 基本的な危険パターンをチェック
+  const dangerousPatterns = [
+    /ignore\s+previous\s+instructions/i,
+    /you\s+are\s+now\s+/i,
+    /system\s+override/i,
+    /reveal\s+prompt/i,
+    /<script/i,
+    /<iframe/i
+  ];
+  
+  const hasDangerousPattern = dangerousPatterns.some(pattern => pattern.test(input));
+  if (hasDangerousPattern) {
+    return { 
+      isValid: false, 
+      error: '申し訳ございませんが、その内容の質問はお受けできません' 
+    };
+  }
+  
+  return { isValid: true };
+};
 
 export default function AiChatWidget({ 
   caseId, 
   viewerId, 
-  caseName, 
-  position = 'bottom-right',
-  className = ''
+  tenantId, 
+  isFloating = false 
 }: AiChatWidgetProps) {
-  const [isOpen, setIsOpen] = useState(false);
-  const [isMinimized, setIsMinimized] = useState(false);
+  const [isOpen, setIsOpen] = useState(!isFloating);
+  const [inputError, setInputError] = useState<string>('');
+  const [securityWarning, setSecurityWarning] = useState<string>('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const {
-    messages,
-    input,
-    handleInputChange,
-    handleSubmit,
-    isLoading,
-    error,
-    setMessages
-  } = useChat({
+  const { messages, input, handleInputChange, handleSubmit, isLoading, error } = useChat({
     api: '/api/ai',
     body: {
       caseId,
-      viewerId
+      viewerId,
+      tenantId,
     },
-    onError: (error: Error) => {
-      console.error('AI チャットエラー:', error);
+    onError: (error) => {
+      console.error('AI Chat Error:', error);
+      
+      // セキュリティ関連エラーの処理
+      if (error.message.includes('運用ガイドライン')) {
+        setSecurityWarning('セキュリティ上の理由でその質問はお受けできません');
+      } else if (error.message.includes('確認中')) {
+        setSecurityWarning('質問の内容を確認中です。しばらくお待ちください');
+      } else if (error.message.includes('アクセス権限')) {
+        setSecurityWarning('この事例にアクセスする権限がありません');
+      }
+    },
+    onFinish: () => {
+      setInputError('');
+      setSecurityWarning('');
     }
   });
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
-
+  // メッセージが更新されたら最下部にスクロール
   useEffect(() => {
-    scrollToBottom();
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const handleFormSubmit = (e: React.FormEvent) => {
+  // セキュリティ警告をクリア
+  useEffect(() => {
+    if (securityWarning) {
+      const timer = setTimeout(() => {
+        setSecurityWarning('');
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [securityWarning]);
+
+  const handleSecureSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!input.trim() || isLoading) return;
+    
+    // 入力検証
+    const validation = validateInput(input);
+    if (!validation.isValid) {
+      setInputError(validation.error || '');
+      return;
+    }
+    
+    setInputError('');
+    setSecurityWarning('');
     handleSubmit(e);
   };
 
-  const clearChat = () => {
-    setMessages([]);
+  const handleInputChangeWithValidation = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    
+    // リアルタイム検証
+    if (value.length > 1000) {
+      setInputError('質問は1000文字以内で入力してください');
+    } else {
+      setInputError('');
+    }
+    
+    handleInputChange(e);
   };
 
-  // インライン表示の場合
-  if (position === 'inline') {
+  if (isFloating && !isOpen) {
     return (
-      <div className={`bg-white rounded-lg shadow-lg border border-gray-200 ${className}`}>
-        <div className="bg-gradient-to-r from-blue-500 to-purple-600 text-white p-4 rounded-t-lg">
-          <div className="flex items-center space-x-2">
-            <Bot className="h-5 w-5" />
-            <h3 className="font-medium">AI質問チャット</h3>
-          </div>
-          <p className="text-sm text-blue-100 mt-1">
-            「{caseName}」について何でもお聞きください
-          </p>
-        </div>
+      <div className="fixed bottom-4 right-4 z-50">
+        <Button
+          onClick={() => setIsOpen(true)}
+          className="rounded-full w-14 h-14 bg-blue-600 hover:bg-blue-700 shadow-lg"
+        >
+          <MessageSquare className="w-6 h-6" />
+        </Button>
+      </div>
+    );
+  }
 
-        <div className="h-96 flex flex-col">
-          {/* メッセージエリア */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-4">
-            {messages.length === 0 ? (
+  return (
+    <div className={`${isFloating ? 'fixed bottom-4 right-4 z-50 w-96 h-[500px]' : 'w-full h-[600px]'}`}>
+      <Card className="h-full flex flex-col">
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <Bot className="w-5 h-5 text-blue-600" />
+              AI建設アシスタント
+              <Shield className="w-4 h-4 text-green-600" />
+            </CardTitle>
+            {isFloating && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setIsOpen(false)}
+                className="h-8 w-8 p-0"
+              >
+                ×
+              </Button>
+            )}
+          </div>
+          {securityWarning && (
+            <div className="flex items-center gap-2 p-2 bg-yellow-50 border border-yellow-200 rounded-md">
+              <AlertTriangle className="w-4 h-4 text-yellow-600" />
+              <span className="text-sm text-yellow-800">{securityWarning}</span>
+            </div>
+          )}
+        </CardHeader>
+        
+        <CardContent className="flex-1 flex flex-col p-4">
+          {/* メッセージ表示エリア */}
+          <div className="flex-1 overflow-y-auto space-y-4 mb-4">
+            {messages.length === 0 && (
               <div className="text-center text-gray-500 py-8">
-                <Bot className="h-12 w-12 mx-auto mb-4 text-gray-400" />
-                <p className="text-sm">この事例について質問してみてください</p>
-                <p className="text-xs text-gray-400 mt-1">
-                  工法、費用、工期など何でもお答えします
+                <Bot className="w-12 h-12 mx-auto mb-4 text-gray-400" />
+                <p className="text-sm">
+                  この建設事例について何でもお聞きください。<br />
+                  安全なAIシステムで回答いたします。
                 </p>
               </div>
-            ) : (
-              messages.map((message: any) => (
+            )}
+            
+            {messages.map((message) => (
+              <div
+                key={message.id}
+                className={`flex gap-3 ${
+                  message.role === 'user' ? 'justify-end' : 'justify-start'
+                }`}
+              >
                 <div
-                  key={message.id}
-                  className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                  className={`flex gap-2 max-w-[80%] ${
+                    message.role === 'user' ? 'flex-row-reverse' : 'flex-row'
+                  }`}
                 >
+                  <div className="flex-shrink-0">
+                    {message.role === 'user' ? (
+                      <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
+                        <User className="w-4 h-4 text-white" />
+                      </div>
+                    ) : (
+                      <div className="w-8 h-8 bg-gray-600 rounded-full flex items-center justify-center">
+                        <Bot className="w-4 h-4 text-white" />
+                      </div>
+                    )}
+                  </div>
                   <div
-                    className={`max-w-[80%] rounded-lg p-3 ${
+                    className={`px-4 py-2 rounded-lg ${
                       message.role === 'user'
-                        ? 'bg-blue-500 text-white'
+                        ? 'bg-blue-600 text-white'
                         : 'bg-gray-100 text-gray-900'
                     }`}
                   >
-                    <div className="flex items-start space-x-2">
-                      {message.role === 'assistant' && (
-                        <Bot className="h-4 w-4 mt-0.5 text-blue-500" />
-                      )}
-                      {message.role === 'user' && (
-                        <User className="h-4 w-4 mt-0.5 text-blue-100" />
-                      )}
-                      <div className="flex-1">
-                        <p className="text-sm whitespace-pre-wrap">{message.content}</p>
-                        <p className={`text-xs mt-1 ${
-                          message.role === 'user' ? 'text-blue-100' : 'text-gray-500'
-                        }`}>
-                          {format(new Date(message.createdAt || new Date()), 'HH:mm', { locale: ja })}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ))
-            )}
-            
-            {isLoading && (
-              <div className="flex justify-start">
-                <div className="bg-gray-100 rounded-lg p-3 max-w-[80%]">
-                  <div className="flex items-center space-x-2">
-                    <Bot className="h-4 w-4 text-blue-500" />
-                    <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
-                    <span className="text-sm text-gray-600">回答を生成中...</span>
+                    <p className="text-sm whitespace-pre-wrap">{message.content}</p>
                   </div>
                 </div>
               </div>
-            )}
-
-            {error && (
-              <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-                <div className="flex items-center space-x-2 text-red-700">
-                  <AlertCircle className="h-4 w-4" />
-                  <span className="text-sm font-medium">エラーが発生しました</span>
+            ))}
+            
+            {isLoading && (
+              <div className="flex gap-3 justify-start">
+                <div className="flex gap-2">
+                  <div className="w-8 h-8 bg-gray-600 rounded-full flex items-center justify-center">
+                    <Bot className="w-4 h-4 text-white" />
+                  </div>
+                  <div className="bg-gray-100 px-4 py-2 rounded-lg">
+                    <div className="flex space-x-1">
+                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
+                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                    </div>
+                  </div>
                 </div>
-                <p className="text-sm text-red-600 mt-1">{error.message}</p>
               </div>
             )}
             
             <div ref={messagesEndRef} />
           </div>
 
-          {/* 入力エリア */}
-          <div className="border-t border-gray-200 p-4">
-            <form onSubmit={handleFormSubmit} className="flex space-x-2">
-              <input
-                type="text"
-                value={input}
-                onChange={handleInputChange}
-                placeholder="この事例について質問してください..."
-                className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                disabled={isLoading}
-              />
-              <button
-                type="submit"
-                disabled={!input.trim() || isLoading}
-                className="bg-blue-500 text-white rounded-lg px-4 py-2 hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                <Send className="h-4 w-4" />
-              </button>
-            </form>
-            <div className="flex justify-between items-center mt-2">
-              <p className="text-xs text-gray-500">
-                日本語で質問してください
-              </p>
-              {messages.length > 0 && (
-                <button
-                  onClick={clearChat}
-                  className="text-xs text-gray-500 hover:text-gray-700"
-                >
-                  チャットをクリア
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // フローティングウィジェット
-  const positionClasses = {
-    'bottom-right': 'fixed bottom-6 right-6 z-50',
-    'bottom-left': 'fixed bottom-6 left-6 z-50'
-  };
-
-  return (
-    <div className={positionClasses[position]}>
-      {/* チャットボタン */}
-      {!isOpen && (
-        <button
-          onClick={() => setIsOpen(true)}
-          className="bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-full p-4 shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-200"
-        >
-          <MessageCircle className="h-6 w-6" />
-        </button>
-      )}
-
-      {/* チャットウィンドウ */}
-      {isOpen && (
-        <div className={`bg-white rounded-lg shadow-2xl border border-gray-200 w-80 ${
-          isMinimized ? 'h-14' : 'h-96'
-        } transition-all duration-300`}>
-          {/* ヘッダー */}
-          <div className="bg-gradient-to-r from-blue-500 to-purple-600 text-white p-3 rounded-t-lg">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-2">
-                <Bot className="h-4 w-4" />
-                <span className="font-medium text-sm">AI質問チャット</span>
+          {/* 入力フォーム */}
+          <form onSubmit={handleSecureSubmit} className="space-y-2">
+            {inputError && (
+              <div className="text-sm text-red-600 bg-red-50 p-2 rounded border border-red-200">
+                {inputError}
               </div>
-              <div className="flex items-center space-x-1">
-                <button
-                  onClick={() => setIsMinimized(!isMinimized)}
-                  className="text-blue-100 hover:text-white p-1 rounded transition-colors"
-                >
-                  {isMinimized ? <Maximize2 className="h-4 w-4" /> : <Minimize2 className="h-4 w-4" />}
-                </button>
-                <button
-                  onClick={() => setIsOpen(false)}
-                  className="text-blue-100 hover:text-white p-1 rounded transition-colors"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-            </div>
-            {!isMinimized && (
-              <p className="text-xs text-blue-100 mt-1">
-                「{caseName}」について質問
-              </p>
             )}
-          </div>
+            
+            <div className="flex gap-2">
+              <Input
+                value={input}
+                onChange={handleInputChangeWithValidation}
+                placeholder="建設事例について質問してください..."
+                disabled={isLoading}
+                className="flex-1"
+                maxLength={1000}
+              />
+              <Button 
+                type="submit" 
+                disabled={isLoading || !input.trim() || !!inputError}
+                className="px-4"
+              >
+                <Send className="w-4 h-4" />
+              </Button>
+            </div>
+            
+            <div className="flex justify-between items-center text-xs text-gray-500">
+              <span>{input.length}/1000文字</span>
+              <span className="flex items-center gap-1">
+                <Shield className="w-3 h-3" />
+                セキュリティ保護済み
+              </span>
+            </div>
+          </form>
 
-          {/* メッセージエリア（最小化時は非表示） */}
-          {!isMinimized && (
-            <>
-              <div className="h-64 overflow-y-auto p-3 space-y-3">
-                {messages.length === 0 ? (
-                  <div className="text-center text-gray-500 py-4">
-                    <Bot className="h-8 w-8 mx-auto mb-2 text-gray-400" />
-                    <p className="text-xs">この事例について質問してみてください</p>
-                  </div>
-                ) : (
-                  messages.map((message: any) => (
-                    <div
-                      key={message.id}
-                      className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                    >
-                      <div
-                        className={`max-w-[85%] rounded-lg p-2 text-xs ${
-                          message.role === 'user'
-                            ? 'bg-blue-500 text-white'
-                            : 'bg-gray-100 text-gray-900'
-                        }`}
-                      >
-                        <p className="whitespace-pre-wrap">{message.content}</p>
-                        <p className={`text-xs mt-1 ${
-                          message.role === 'user' ? 'text-blue-100' : 'text-gray-500'
-                        }`}>
-                          {format(new Date(message.createdAt || new Date()), 'HH:mm', { locale: ja })}
-                        </p>
-                      </div>
-                    </div>
-                  ))
-                )}
-                
-                {isLoading && (
-                  <div className="flex justify-start">
-                    <div className="bg-gray-100 rounded-lg p-2 max-w-[85%]">
-                      <div className="flex items-center space-x-1">
-                        <Loader2 className="h-3 w-3 animate-spin text-blue-500" />
-                        <span className="text-xs text-gray-600">回答中...</span>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {error && (
-                  <div className="bg-red-50 border border-red-200 rounded-lg p-2">
-                    <div className="flex items-center space-x-1 text-red-700">
-                      <AlertCircle className="h-3 w-3" />
-                      <span className="text-xs">エラー</span>
-                    </div>
-                    <p className="text-xs text-red-600 mt-1">{error.message}</p>
-                  </div>
-                )}
-                
-                <div ref={messagesEndRef} />
-              </div>
-
-              {/* 入力エリア */}
-              <div className="border-t border-gray-200 p-3">
-                <form onSubmit={handleFormSubmit} className="flex space-x-2">
-                  <input
-                    type="text"
-                    value={input}
-                    onChange={handleInputChange}
-                    placeholder="質問を入力..."
-                    className="flex-1 border border-gray-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-transparent"
-                    disabled={isLoading}
-                  />
-                  <button
-                    type="submit"
-                    disabled={!input.trim() || isLoading}
-                    className="bg-blue-500 text-white rounded px-2 py-1 hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  >
-                    <Send className="h-3 w-3" />
-                  </button>
-                </form>
-              </div>
-            </>
+          {error && (
+            <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded text-sm text-red-600">
+              エラーが発生しました: {error.message}
+            </div>
           )}
-        </div>
-      )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

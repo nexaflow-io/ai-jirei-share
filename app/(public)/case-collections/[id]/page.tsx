@@ -294,6 +294,7 @@ export default function CasesPage({ params }: CasesPageProps) {
           caseId="general" 
           caseName={`${tenantData.name}の事例について`}
           position="bottom-right"
+          tenantId={tenantData.id}
         />
       )}
     </div>
