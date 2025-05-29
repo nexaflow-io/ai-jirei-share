@@ -88,8 +88,8 @@ export function useAuth() {
 
       if (error) throw error;
 
-      // ダッシュボードへリダイレクト
-      router.push('/dashboard');
+      // ダッシュボードへリダイレクト（より確実な方法）
+      window.location.href = '/dashboard';
       return { success: true, data };
     } catch (error: any) {
       console.error('Sign in error:', error);
