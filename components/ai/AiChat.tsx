@@ -22,6 +22,7 @@ export function AiChat({ caseId, viewerId }: AiChatProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([
     {
       id: 'welcome',
@@ -37,6 +38,13 @@ export function AiChat({ caseId, viewerId }: AiChatProps) {
       messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
   }, [messages]);
+
+  // 入力フィールドがフォーカスされたら自動展開
+  const handleFocus = () => {
+    if (!isExpanded) {
+      setIsExpanded(true);
+    }
+  };
 
   // 入力変更ハンドラー
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -57,6 +65,7 @@ export function AiChat({ caseId, viewerId }: AiChatProps) {
     setMessages((prev) => [...prev, userMessage]);
     setInput('');
     setIsLoading(true);
+    setError(null);
 
     try {
       // APIリクエスト
@@ -72,11 +81,19 @@ export function AiChat({ caseId, viewerId }: AiChatProps) {
         }),
       });
 
-      if (!response.ok) {
-        throw new Error('AI応答の取得に失敗しました');
-      }
-
       const data = await response.json();
+
+      if (!response.ok) {
+        // エラーレスポンスの場合
+        let errorMsg = 'サーバーエラーが発生しました';
+        if (data.error) {
+          errorMsg = data.error;
+        } else if (response.status === 429) {
+          errorMsg = '質問回数制限に達しました。しばらくしてからお試しください。';
+        }
+        setError(errorMsg);
+        throw new Error(errorMsg);
+      }
       
       // AIの応答を追加
       const assistantMessage: Message = {
@@ -85,13 +102,13 @@ export function AiChat({ caseId, viewerId }: AiChatProps) {
         content: data.answer,
       };
       setMessages((prev) => [...prev, assistantMessage]);
-    } catch (error) {
+    } catch (error: any) {
       console.error('AI質問エラー:', error);
       // エラーメッセージを追加
       const errorMessage: Message = {
         id: Date.now().toString(),
         role: 'assistant',
-        content: 'すみません、エラーが発生しました。しばらくしてからもう一度お試しください。',
+        content: `すみません、エラーが発生しました: ${error.message || 'しばらくしてからもう一度お試しください'}`,
       };
       setMessages((prev) => [...prev, errorMessage]);
     } finally {
@@ -102,15 +119,30 @@ export function AiChat({ caseId, viewerId }: AiChatProps) {
   return (
     <Card className="w-full max-w-2xl mx-auto shadow-md border border-gray-200">
       <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-t-lg">
-        <CardTitle className="flex items-center text-lg">
-          <Avatar className="h-8 w-8 mr-2 bg-white text-blue-600">
-            <span className="text-xl">🤖</span>
-          </Avatar>
-          AI質問機能
+        <CardTitle className="flex items-center justify-between text-lg">
+          <div className="flex items-center">
+            <Avatar className="h-8 w-8 mr-2 bg-white text-blue-600">
+              <span className="text-xl">🤖</span>
+            </Avatar>
+            AI質問機能
+          </div>
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            onClick={() => setIsExpanded(!isExpanded)}
+            className="text-white hover:bg-blue-700"
+          >
+            {isExpanded ? '折りたたむ' : '展開する'}
+          </Button>
         </CardTitle>
       </CardHeader>
       
       <CardContent className={`p-0 transition-all duration-300 overflow-hidden ${isExpanded ? 'max-h-96' : 'max-h-20'}`}>
+        {error && (
+          <div className="px-4 py-2 bg-red-50 text-red-600 border-b border-red-100">
+            <p className="text-sm">{error}</p>
+          </div>
+        )}
         <div className="p-4 overflow-y-auto max-h-full">
           {messages.map((message) => (
             <div
@@ -144,6 +176,7 @@ export function AiChat({ caseId, viewerId }: AiChatProps) {
           <Textarea
             value={input}
             onChange={handleInputChange}
+            onFocus={handleFocus}
             placeholder="質問を入力してください..."
             className="flex-1 min-h-[80px] resize-none"
             disabled={isLoading}
