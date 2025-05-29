@@ -29,7 +29,7 @@ interface AiQuestion {
   case_id: string | null;
   question: string;
   answer: string;
-  model: string;
+  model_used: string;
   created_at: string;
   construction_cases: { name: string } | null;
 }
@@ -168,7 +168,7 @@ export function RealtimeDashboard({
           case_id: item.case_id,
           question: item.question,
           answer: item.answer,
-          model: item.model_used,
+          model_used: item.model_used,
           created_at: item.created_at,
           construction_cases: item.construction_cases
         }));
