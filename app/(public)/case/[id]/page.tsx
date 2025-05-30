@@ -15,12 +15,13 @@ import { ja } from 'date-fns/locale';
 import { CaseViewWrapper } from '@/components/CaseViewWrapper';
 
 type CasePageProps = {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 };
 
 export default async function CasePage({ params }: CasePageProps) {
+  const { id } = await params;
   const supabase = createServerClient();
-  const headersList = headers();
+  const headersList = await headers();
   const userAgent = headersList.get('user-agent') || '';
   const referer = headersList.get('referer') || '';
   const ip = headersList.get('x-forwarded-for') || headersList.get('x-real-ip') || '';
@@ -47,7 +48,7 @@ export default async function CasePage({ params }: CasePageProps) {
         name
       )
     `)
-    .eq('id', params.id)
+    .eq('id', id)
     .eq('is_published', true)
     .single();
 
@@ -60,7 +61,7 @@ export default async function CasePage({ params }: CasePageProps) {
   const { data: imageData, error: imageError } = await supabase
     .from('case_images')
     .select('id, image_url')
-    .eq('case_id', params.id)
+    .eq('case_id', id)
     .order('display_order', { ascending: true });
 
   if (imageError) {
@@ -225,7 +226,7 @@ export default async function CasePage({ params }: CasePageProps) {
                   {/* AIチャットウィジェット */}
                   <div className="bg-white/70 backdrop-blur-sm rounded-xl border border-white/20 shadow-lg overflow-hidden">
                     <AiChatWidget 
-                      caseId={params.id} 
+                      caseId={id} 
                       tenantId={caseData.tenant_id}
                     />
                   </div>
@@ -241,7 +242,7 @@ export default async function CasePage({ params }: CasePageProps) {
                         この事例について詳しく知りたい方は、お気軽にお問い合わせください。
                       </p>
                       <a
-                        href={`/inquiry/${params.id}`}
+                        href={`/inquiry/${id}`}
                         className="block w-full py-3 px-4 bg-white text-blue-600 text-center rounded-lg hover:bg-blue-50 transition-all duration-200 font-medium shadow-sm"
                       >
                         詳細を問い合わせる

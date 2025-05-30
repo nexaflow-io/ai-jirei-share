@@ -14,18 +14,25 @@ import { Loader2, Building2, Calendar, User } from 'lucide-react';
 import { ViewerInfoForm } from '@/components/ViewerInfoForm';
 import AiChatWidget from '@/components/AiChatWidget';
 
-type CasesPageProps = {
-  params: { id: string };
-};
-
-export default function CasesPage({ params }: CasesPageProps) {
+export default function CasesPage({ params }: { params: Promise<{ id: string }> }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tenantData, setTenantData] = useState<any>(null);
   const [casesWithImages, setCasesWithImages] = useState<any[]>([]);
   const [showViewerForm, setShowViewerForm] = useState(true);
+  const [resolvedParams, setResolvedParams] = useState<{ id: string } | null>(null);
   const router = useRouter();
   const supabase = createClient();
+  
+  // paramsを解決
+  useEffect(() => {
+    const resolveParams = async () => {
+      const resolved = await params;
+      setResolvedParams(resolved);
+    };
+    resolveParams();
+  }, [params]);
+
   // LocalStorageから閲覧者情報を確認
   useEffect(() => {
     const checkViewerInfo = () => {
@@ -49,79 +56,83 @@ export default function CasesPage({ params }: CasesPageProps) {
     
     checkViewerInfo();
   }, []);
-  
-  // データ取得
+
   useEffect(() => {
-    const fetchData = async () => {
+    const fetchTenantAndCases = async () => {
+      if (!resolvedParams?.id) return;
+      
       try {
         setLoading(true);
         
         // テナント情報を取得
-        const { data: tenantData, error: tenantError } = await supabase
+        const { data: tenant, error: tenantError } = await supabase
           .from('tenants')
-          .select('id, name')
-          .eq('id', params.id)
+          .select('*')
+          .eq('id', resolvedParams.id)
           .single();
-          
-        if (tenantError || !tenantData) {
+
+        if (tenantError) {
           console.error('テナント取得エラー:', tenantError);
-          router.push('/404');
+          setError('テナント情報の取得に失敗しました');
           return;
         }
-        
-        setTenantData(tenantData);
-        
-        // 公開事例一覧を取得
-        const { data: casesData, error: casesError } = await supabase
+
+        if (!tenant) {
+          notFound();
+          return;
+        }
+
+        setTenantData(tenant);
+
+        // 公開されている事例を取得
+        const { data: cases, error: casesError } = await supabase
           .from('construction_cases')
           .select(`
             id,
             name,
-            category,
             description,
-            solution,
-            result,
+            category,
             created_at,
-            updated_at,
-            users (
-              id,
-              full_name
-            )
+            updated_at
           `)
-          .eq('tenant_id', params.id)
+          .eq('tenant_id', resolvedParams.id)
           .eq('is_published', true)
-          .order('updated_at', { ascending: false });
-          
+          .order('created_at', { ascending: false });
+
         if (casesError) {
           console.error('事例取得エラー:', casesError);
           setError('事例の取得に失敗しました');
           return;
         }
-        
-        if (!casesData || casesData.length === 0) {
-          setCasesWithImages([]);
-          setLoading(false);
-          return;
-        }
-        
-        // 各事例の最初の画像を取得
-        const casesWithImagesPromises = casesData.map(async (caseItem) => {
-          const { data: imageData } = await supabase
-            .from('case_images')
-            .select('image_url')
-            .eq('case_id', caseItem.id)
-            .order('display_order', { ascending: true })
-            .limit(1)
-            .single();
-            
-          return {
-            ...caseItem,
-            thumbnail: imageData?.image_url || null
-          };
-        });
-        
-        const casesWithImagesResult = await Promise.all(casesWithImagesPromises);
-        setCasesWithImages(casesWithImagesResult);
+
+        // 各事例の画像を取得
+        const casesWithImagesData = await Promise.all(
+          (cases || []).map(async (caseItem) => {
+            try {
+              const { data: images, error: imageError } = await supabase
+                .from('case_images')
+                .select('id, image_url')
+                .eq('case_id', caseItem.id)
+                .order('display_order', { ascending: true })
+                .limit(1);
+
+              if (imageError) {
+                console.error('画像取得エラー:', imageError);
+                return { ...caseItem, image: null };
+              }
+
+              return {
+                ...caseItem,
+                image: images && images.length > 0 ? { ...images[0] } : null
+              };
+            } catch (e) {
+              console.error('事例画像取得エラー:', e);
+              return { ...caseItem, image: null };
+            }
+          })
+        );
+
+        setCasesWithImages(casesWithImagesData);
       } catch (err) {
         console.error('データ取得エラー:', err);
         setError('データの取得に失敗しました');
@@ -129,173 +140,125 @@ export default function CasesPage({ params }: CasesPageProps) {
         setLoading(false);
       }
     };
-    
-    fetchData();
-  }, [params.id, router, supabase]);
-  
-  // 閲覧者情報入力完了時の処理
-  const handleViewerFormComplete = () => {
+
+    if (resolvedParams) {
+      fetchTenantAndCases();
+    }
+  }, [resolvedParams]);
+
+  const handleViewerFormComplete = (viewerId: string) => {
     setShowViewerForm(false);
   };
-  
-  // ローディング中の表示
+
   if (loading) {
     return (
-      <div className="container mx-auto px-4 py-12 flex flex-col items-center justify-center">
-        <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
-        <p className="text-gray-600">データを読み込み中...</p>
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin" />
       </div>
     );
   }
-  
-  // エラー表示
+
   if (error) {
     return (
-      <div className="container mx-auto px-4 py-8">
-        <div className="bg-red-50 p-6 rounded-lg text-red-600 text-center">
-          <p>{error}</p>
-          <Button variant="outline" className="mt-4" onClick={() => router.push('/')}>
-            トップページに戻る
-          </Button>
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-red-600 mb-4">エラー</h1>
+          <p className="text-gray-600">{error}</p>
         </div>
       </div>
     );
   }
-  
-  // 閲覧者情報入力フォームの表示
-  if (showViewerForm) {
-    return (
-      <div className="container mx-auto px-4 py-8 max-w-md">
-        <div className="mb-8 text-center">
-          <h1 className="text-3xl font-bold mb-2">{tenantData?.name}の施工事例集</h1>
-          <p className="text-gray-600">
-            施工事例をご覧いただくには、以下の情報を入力してください。
-          </p>
-        </div>
-        
-        <ViewerInfoForm 
-          caseId={casesWithImages[0]?.id || ''} 
-          tenantId={params.id} 
-          onComplete={handleViewerFormComplete} 
-        />
-      </div>
-    );
+
+  if (!tenantData) {
+    notFound();
+    return null;
   }
-  
-  // 事例一覧の表示
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
-      {/* ヒーローセクション */}
-      <div className="bg-gradient-to-r from-blue-600 to-indigo-700 text-white">
-        <div className="container mx-auto px-4 py-16">
-          <div className="text-center">
-            <div className="inline-flex items-center justify-center w-16 h-16 bg-white/20 rounded-full mb-6">
-              <Building2 className="w-8 h-8" />
-            </div>
-            <h1 className="text-4xl md:text-5xl font-bold mb-4">
-              {tenantData?.name}
-            </h1>
-            <p className="text-xl text-blue-100 mb-2">施工事例集</p>
-            <p className="text-blue-200 max-w-2xl mx-auto">
-              当社の施工事例をご覧いただけます。詳細を見るには各事例をクリックしてください。
-            </p>
-          </div>
-        </div>
-      </div>
+    <div className="min-h-screen bg-gray-50">
+      {/* 閲覧者情報フォーム */}
+      {showViewerForm && resolvedParams?.id && (
+        <ViewerInfoForm
+          caseId={resolvedParams.id}
+          tenantId={resolvedParams.id}
+          onComplete={handleViewerFormComplete}
+        />
+      )}
 
       {/* メインコンテンツ */}
-      <div className="container mx-auto px-4 py-12">
+      <div className="container mx-auto px-4 py-8">
+        {/* ヘッダー */}
+        <div className="text-center mb-12">
+          <h1 className="text-4xl font-bold text-gray-900 mb-4">
+            {tenantData.company_name}の施工事例
+          </h1>
+          <p className="text-xl text-gray-600 max-w-2xl mx-auto">
+            {tenantData.description || '高品質な施工実績をご覧ください'}
+          </p>
+        </div>
+
+        {/* 事例一覧 */}
         {casesWithImages.length === 0 ? (
-          <div className="text-center p-16 bg-white/70 backdrop-blur-sm rounded-2xl shadow-lg border border-white/20">
-            <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Building2 className="w-8 h-8 text-gray-400" />
-            </div>
-            <h2 className="text-xl font-medium text-gray-700 mb-2">公開されている事例はありません</h2>
-            <p className="text-gray-500">現在準備中です。しばらくお待ちください。</p>
+          <div className="text-center py-12">
+            <p className="text-gray-500 text-lg">まだ公開されている事例がありません。</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             {casesWithImages.map((caseItem) => (
-              <Link href={`/case/${caseItem.id}`} key={caseItem.id}>
-                <Card className="group h-full bg-white/70 backdrop-blur-sm border border-white/20 hover:shadow-2xl hover:scale-105 transition-all duration-300 cursor-pointer overflow-hidden">
-                  {/* 画像セクション */}
-                  <div className="relative">
-                    {caseItem.thumbnail ? (
-                      <div className="relative w-full h-56 overflow-hidden">
-                        <Image
-                          src={caseItem.thumbnail}
-                          alt={caseItem.name}
-                          fill
-                          sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-                          className="object-cover group-hover:scale-110 transition-transform duration-300"
-                        />
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent" />
-                      </div>
-                    ) : (
-                      <div className="w-full h-56 bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center">
-                        <Building2 className="w-12 h-12 text-gray-400" />
-                      </div>
-                    )}
-                    
-                    {/* カテゴリバッジ */}
-                    <div className="absolute top-4 left-4">
-                      <Badge variant="secondary" className="bg-white/90 text-gray-700 shadow-sm">
-                        {caseItem.category || '未分類'}
+              <Card key={caseItem.id} className="overflow-hidden hover:shadow-lg transition-shadow">
+                <div className="relative h-48 bg-gray-200">
+                  {caseItem.image ? (
+                    <Image
+                      src={caseItem.image.image_url}
+                      alt={caseItem.name}
+                      fill
+                      className="object-cover"
+                    />
+                  ) : (
+                    <div className="flex items-center justify-center h-full">
+                      <Building2 className="h-12 w-12 text-gray-400" />
+                    </div>
+                  )}
+                </div>
+                
+                <CardHeader>
+                  <CardTitle className="line-clamp-2">{caseItem.name}</CardTitle>
+                  <CardDescription className="line-clamp-3">
+                    {caseItem.description}
+                  </CardDescription>
+                </CardHeader>
+                
+                <CardContent>
+                  <div className="space-y-2 text-sm text-gray-600">
+                    {caseItem.category && (
+                      <Badge variant="secondary" className="mt-2">
+                        {caseItem.category}
                       </Badge>
-                    </div>
+                    )}
                   </div>
-
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-xl group-hover:text-blue-600 transition-colors line-clamp-2">
-                      {caseItem.name}
-                    </CardTitle>
-                  </CardHeader>
-                  
-                  <CardContent className="pb-4">
-                    <p className="line-clamp-3 text-gray-600 leading-relaxed">
-                      {caseItem.description || '詳細情報をご覧ください。'}
-                    </p>
-                  </CardContent>
-                  
-                  <CardFooter className="pt-0 flex items-center justify-between text-sm text-gray-500">
-                    <div className="flex items-center">
-                      <User className="w-4 h-4 mr-1" />
-                      <span>{caseItem.users?.full_name || '担当者'}</span>
-                    </div>
-                    <div className="flex items-center">
-                      <Calendar className="w-4 h-4 mr-1" />
-                      <span>
-                        {formatDistanceToNow(new Date(caseItem.updated_at), { 
-                          addSuffix: true,
-                          locale: ja 
-                        })}
-                      </span>
-                    </div>
-                  </CardFooter>
-                </Card>
-              </Link>
+                </CardContent>
+                
+                <CardFooter>
+                  <Link href={`/case/${caseItem.id}`} className="w-full">
+                    <Button className="w-full">詳細を見る</Button>
+                  </Link>
+                </CardFooter>
+              </Card>
             ))}
           </div>
         )}
-        
-        {/* フッターアクション */}
-        <div className="mt-16 text-center">
-          <Button 
-            variant="outline" 
-            onClick={() => router.push('/')}
-            className="bg-white/70 backdrop-blur-sm border-white/20 hover:bg-white/90 transition-all duration-300"
-          >
-            トップページに戻る
-          </Button>
-        </div>
+
+        {/* AIチャットウィジェット */}
+        {resolvedParams?.id && (
+          <div className="fixed bottom-4 right-4">
+            <AiChatWidget 
+              caseId={resolvedParams.id} 
+              tenantId={resolvedParams.id}
+              isFloating={true}
+            />
+          </div>
+        )}
       </div>
-      {tenantData && (
-        <AiChatWidget 
-          caseId="general" 
-          tenantId={tenantData.id}
-          isFloating={true}
-        />
-      )}
     </div>
   );
 }

@@ -10,11 +10,12 @@ export const metadata = {
 export default async function InquiryPage({
   params,
 }: {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }) {
   const supabase = createServerClient();
   
   // 事例データを取得（公開されている事例のみ）
+  const { id } = await params;
   const { data: caseData, error: caseError } = await supabase
     .from('construction_cases')
     .select(`
@@ -26,7 +27,7 @@ export default async function InquiryPage({
         name
       )
     `)
-    .eq('id', params.id)
+    .eq('id', id)
     .eq('is_published', true)
     .single();
     

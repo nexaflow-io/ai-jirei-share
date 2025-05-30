@@ -10,8 +10,9 @@ export const metadata = {
 export default async function EditCasePage({
   params,
 }: {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }) {
+  const { id } = await params;
   const supabase = createServerClient();
   
   // セッション確認
@@ -45,7 +46,7 @@ export default async function EditCasePage({
       result,
       is_published
     `)
-    .eq('id', params.id)
+    .eq('id', id)
     .eq('tenant_id', userData.tenant_id)
     .single();
     
@@ -58,7 +59,7 @@ export default async function EditCasePage({
   const { data: imageData, error: imageError } = await supabase
     .from('case_images')
     .select('id, image_url')
-    .eq('case_id', params.id)
+    .eq('case_id', id)
     .order('display_order', { ascending: true });
     
   if (imageError) {
