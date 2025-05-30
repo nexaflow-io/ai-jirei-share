@@ -10,6 +10,10 @@ export const inquirySchema = z.object({
     .string()
     .min(1, { message: '会社名は必須です' })
     .max(100, { message: '会社名は100文字以内で入力してください' }),
+  position: z
+    .string()
+    .min(1, { message: '役職は必須です' })
+    .max(50, { message: '役職は50文字以内で入力してください' }),
   email: z
     .string()
     .min(1, { message: 'メールアドレスは必須です' })

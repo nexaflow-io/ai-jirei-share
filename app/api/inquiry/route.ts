@@ -10,13 +10,14 @@ export async function POST(req: NextRequest) {
       tenantId, 
       name, 
       company, 
+      position,
       email, 
       phone, 
       message 
     } = await req.json();
 
     // 必須パラメータの検証
-    if (!caseId || !tenantId || !name || !company || !email || !message) {
+    if (!caseId || !tenantId || !name || !company || !position || !email || !message) {
       return NextResponse.json(
         { error: '必須項目が不足しています' },
         { status: 400 }
@@ -65,7 +66,7 @@ export async function POST(req: NextRequest) {
         tenant_id: tenantId,
         viewer_id: viewerId,
         subject: `${caseData.name}に関するお問い合わせ`,
-        message: `お名前: ${name}\n会社名: ${company}\nメール: ${email}\n電話番号: ${phone || '未入力'}\n\n${message}`,
+        message: `お名前: ${name}\n会社名: ${company}\n役職: ${position}\nメール: ${email}\n電話番号: ${phone || '未入力'}\n\n${message}`,
         status: 'new'
       })
       .select()
@@ -90,7 +91,7 @@ export async function POST(req: NextRequest) {
         full_name: name,
         email,
         phone,
-        position: company + '担当者' // positionフィールドは必須
+        position: position
       })
       .select('id')
       .single();
@@ -109,6 +110,7 @@ export async function POST(req: NextRequest) {
         message: `
 お名前: ${name}
 会社名: ${company}
+役職: ${position}
 メール: ${email}
 電話番号: ${phone || '未入力'}
 

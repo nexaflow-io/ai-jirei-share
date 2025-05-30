@@ -42,6 +42,7 @@ export function InquiryForm({ caseId, caseName, tenantId, tenantName }: InquiryF
     defaultValues: {
       name: '',
       company: '',
+      position: '',
       email: '',
       phone: '',
       message: '',
@@ -65,6 +66,7 @@ export function InquiryForm({ caseId, caseName, tenantId, tenantName }: InquiryF
           tenantId,
           name: data.name,
           company: data.company,
+          position: data.position,
           email: data.email,
           phone: data.phone,
           message: data.message
@@ -151,6 +153,20 @@ export function InquiryForm({ caseId, caseName, tenantId, tenantName }: InquiryF
                   <FormLabel>会社名</FormLabel>
                   <FormControl>
                     <Input placeholder="株式会社〇〇" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="position"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>役職</FormLabel>
+                  <FormControl>
+                    <Input placeholder="営業部長" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
