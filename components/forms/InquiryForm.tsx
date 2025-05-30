@@ -55,6 +55,8 @@ export function InquiryForm({ caseId, caseName, tenantId, tenantName }: InquiryF
       setIsSubmitting(true);
       setError(null);
 
+      console.log('フォーム送信データ:', data);
+
       // APIエンドポイントを使用して問い合わせを送信
       const response = await fetch('/api/inquiry', {
         method: 'POST',
@@ -73,7 +75,10 @@ export function InquiryForm({ caseId, caseName, tenantId, tenantName }: InquiryF
         }),
       });
 
+      console.log('API レスポンス状態:', response.status);
+
       const result = await response.json();
+      console.log('API レスポンス内容:', result);
 
       if (!response.ok) {
         throw new Error(result.error || '問い合わせの送信に失敗しました');

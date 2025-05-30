@@ -74,6 +74,13 @@ export default function DashboardLayout({
       category: 'content'
     },
     { 
+      name: 'チーム管理', 
+      href: '/team', 
+      icon: Users,
+      description: 'メンバーの招待と管理',
+      category: 'team'
+    },
+    { 
       name: '問い合わせ', 
       href: '/inquiries', 
       icon: MessageSquare,
@@ -203,6 +210,35 @@ export default function DashboardLayout({
               })}
               <div className="text-base font-bold mb-2 mt-2">コンテンツ管理</div>
               {navItems.filter(item => item.category === 'content').map((item) => {
+                const Icon = item.icon;
+                const isActive = pathname.startsWith(item.href);
+                
+                return (
+                  <Link
+                    key={item.name}
+                    href={item.href}
+                    className={`group flex items-center px-4 py-3 text-sm font-medium rounded-xl transition-all duration-200 ${
+                      isActive
+                        ? 'bg-gradient-to-r from-blue-50 to-indigo-50 text-blue-700 border border-blue-200 shadow-sm'
+                        : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                    }`}
+                  >
+                    <Icon className={`mr-3 h-5 w-5 transition-colors ${
+                      isActive ? 'text-blue-600' : 'text-gray-400 group-hover:text-gray-600'
+                    }`} />
+                    <div className="flex-1">
+                      <div className="font-medium">{item.name}</div>
+                      <div className={`text-xs ${
+                        isActive ? 'text-blue-600' : 'text-gray-400'
+                      }`}>
+                        {item.description}
+                      </div>
+                    </div>
+                  </Link>
+                );
+              })}
+              <div className="text-base font-bold mb-2 mt-2">チーム管理</div>
+              {navItems.filter(item => item.category === 'team').map((item) => {
                 const Icon = item.icon;
                 const isActive = pathname.startsWith(item.href);
                 
@@ -403,6 +439,36 @@ export default function DashboardLayout({
                 })}
                 <div className="text-base font-bold mb-2 mt-2">コンテンツ管理</div>
                 {navItems.filter(item => item.category === 'content').map((item) => {
+                  const Icon = item.icon;
+                  const isActive = pathname.startsWith(item.href);
+                  
+                  return (
+                    <Link
+                      key={item.name}
+                      href={item.href}
+                      className={`group flex items-center px-4 py-3 text-sm font-medium rounded-xl transition-all duration-200 ${
+                        isActive
+                          ? 'bg-gradient-to-r from-blue-50 to-indigo-50 text-blue-700 border border-blue-200'
+                          : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                      }`}
+                      onClick={() => setIsMobileMenuOpen(false)}
+                    >
+                      <Icon className={`mr-3 h-5 w-5 ${
+                        isActive ? 'text-blue-600' : 'text-gray-400'
+                      }`} />
+                      <div>
+                        <div className="font-medium">{item.name}</div>
+                        <div className={`text-xs ${
+                          isActive ? 'text-blue-600' : 'text-gray-400'
+                        }`}>
+                          {item.description}
+                        </div>
+                      </div>
+                    </Link>
+                  );
+                })}
+                <div className="text-base font-bold mb-2 mt-2">チーム管理</div>
+                {navItems.filter(item => item.category === 'team').map((item) => {
                   const Icon = item.icon;
                   const isActive = pathname.startsWith(item.href);
                   

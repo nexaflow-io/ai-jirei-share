@@ -1,5 +1,5 @@
 import { notFound } from 'next/navigation';
-import { createServerClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/server';
 import { InquiryForm } from '@/components/forms/InquiryForm';
 
 export const metadata = {
@@ -12,7 +12,7 @@ export default async function InquiryPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const supabase = createServerClient();
+  const supabase = createAdminClient();
   
   // 事例データを取得（公開されている事例のみ）
   const { id } = await params;
