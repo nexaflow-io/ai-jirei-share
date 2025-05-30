@@ -34,7 +34,7 @@ type ViewerFormValues = z.infer<typeof viewerFormSchema>;
 type ViewerInfoFormProps = {
   caseId: string;
   tenantId: string;
-  onComplete: () => void;
+  onComplete: (viewerId: string) => void;
 };
 
 export function ViewerInfoForm({ caseId, tenantId, onComplete }: ViewerInfoFormProps) {
@@ -104,7 +104,7 @@ export function ViewerInfoForm({ caseId, tenantId, onComplete }: ViewerInfoFormP
       
       // 完了通知
       setTimeout(() => {
-        onComplete();
+        onComplete(newViewer.id);
       }, 1000);
       
     } catch (error) {

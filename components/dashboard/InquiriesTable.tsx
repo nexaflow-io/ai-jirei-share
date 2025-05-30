@@ -47,10 +47,10 @@ interface InquiriesStats {
 }
 
 interface InquiriesTableProps {
-  onStatusUpdate?: (inquiryId: string, newStatus: string) => void;
+  // propsは現在不要
 }
 
-export default function InquiriesTable({ onStatusUpdate }: InquiriesTableProps) {
+export default function InquiriesTable({}: InquiriesTableProps = {}) {
   const [inquiries, setInquiries] = useState<Inquiry[]>([]);
   const [stats, setStats] = useState<InquiriesStats>({
     total: 0,
@@ -143,8 +143,6 @@ export default function InquiriesTable({ onStatusUpdate }: InquiriesTableProps) 
         inProgress: updatedInquiries.filter(i => i.status === 'in_progress').length,
         completed: updatedInquiries.filter(i => i.status === 'completed').length
       });
-
-      onStatusUpdate?.(inquiryId, newStatus);
     } catch (err: any) {
       console.error('ステータス更新エラー:', err);
       setError(err.message);

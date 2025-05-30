@@ -81,13 +81,24 @@ export function useAuth() {
   const signIn = async (email: string, password: string) => {
     try {
       setLoading(true);
+      console.log('=== ログイン開始 ===');
+      console.log('Email:', email);
+      console.log('Supabase URL:', process.env.NEXT_PUBLIC_SUPABASE_URL);
+      console.log('Current URL:', window.location.href);
+      
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password
       });
 
-      if (error) throw error;
+      console.log('認証結果:', { data, error });
 
+      if (error) {
+        console.error('認証エラー:', error);
+        throw error;
+      }
+
+      console.log('認証成功、ダッシュボードへリダイレクト');
       // ダッシュボードへリダイレクト
       window.location.href = '/dashboard';
       return { success: true, data };

@@ -1,7 +1,7 @@
-import { redirect } from 'next/navigation';
 import { createServerClient } from '@/lib/supabase/server';
 import InquiriesTable from '@/components/dashboard/InquiriesTable';
 import { MessageSquare, TrendingUp, Clock } from 'lucide-react';
+import { redirect } from 'next/navigation';
 
 export const metadata = {
   title: '問い合わせ一覧 | AI事例シェア',
@@ -9,12 +9,17 @@ export const metadata = {
 };
 
 export default async function InquiriesPage() {
+  console.log('=== InquiriesPage開始 ===');
+  
   const supabase = createServerClient();
   
   try {
+    console.log('セッション取得開始...');
     const {
       data: { session },
     } = await supabase.auth.getSession();
+    
+    console.log('セッション取得結果:', session ? 'セッション有り' : 'セッション無し');
     
     if (!session) {
       console.log('セッションが見つかりません - ログインページにリダイレクト');
@@ -22,6 +27,7 @@ export default async function InquiriesPage() {
     }
 
     console.log('ユーザーID:', session.user.id);
+    console.log('ユーザー情報取得開始...');
 
     // ユーザーのテナントIDを取得
     const { data: userData, error: userError } = await supabase
@@ -29,6 +35,8 @@ export default async function InquiriesPage() {
       .select('tenant_id, tenants(name)')
       .eq('id', session.user.id)
       .single();
+      
+    console.log('ユーザー情報取得結果:', { userData, userError });
       
     if (userError) {
       console.error('ユーザー情報取得エラー:', userError);
@@ -60,6 +68,8 @@ export default async function InquiriesPage() {
       tenantId: userData.tenant_id, 
       tenantName: userData.tenants?.name 
     });
+    
+    console.log('UIレンダリング開始...');
 
     return (
       <div className="min-h-screen bg-gray-50">
@@ -119,11 +129,7 @@ export default async function InquiriesPage() {
           </div>
 
           {/* 問い合わせテーブル */}
-          <InquiriesTable 
-            onStatusUpdate={(inquiryId, newStatus) => {
-              console.log(`問い合わせ ${inquiryId} のステータスが ${newStatus} に更新されました`);
-            }}
-          />
+          <InquiriesTable />
         </div>
       </div>
     );
