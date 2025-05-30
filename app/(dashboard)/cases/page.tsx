@@ -1,16 +1,29 @@
 import Link from 'next/link';
 import { createServerClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
+import { Suspense } from 'react';
 
 import { Button } from '@/components/ui/button';
 import CaseList from '@/components/CaseList';
+import { LoadingState } from '@/components/ui/loading-state';
 
 export const metadata = {
   title: '事例一覧 | AI事例シェア',
   description: 'AI事例シェアの施工事例一覧',
 };
 
-export default async function CasesPage() {
+interface CasesPageProps {
+  searchParams: Promise<{
+    page?: string;
+    search?: string;
+    category?: string;
+    status?: string;
+  }>;
+}
+
+async function CasesContent({ searchParams }: CasesPageProps) {
+  const params = await searchParams;
+
   const supabase = createServerClient();
   
   // セッション確認
@@ -37,9 +50,14 @@ export default async function CasesPage() {
       </div>
     );
   }
-  
-  // 事例一覧を取得（関連データも一括取得で最適化）
-  const { data: casesData, error: casesError } = await supabase
+
+  // ページネーション設定
+  const page = parseInt(params.page || '1', 10);
+  const limit = 20; // 1ページあたりの件数
+  const offset = (page - 1) * limit;
+
+  // 検索・フィルタ条件の構築
+  let query = supabase
     .from('construction_cases')
     .select(`
       id,
@@ -51,9 +69,27 @@ export default async function CasesPage() {
       case_images(id),
       viewers(id),
       access_logs(id)
-    `)
-    .eq('tenant_id', userData.tenant_id)
-    .order('updated_at', { ascending: false });
+    `, { count: 'exact' })
+    .eq('tenant_id', userData.tenant_id);
+
+  // 検索条件の追加
+  if (params.search) {
+    query = query.ilike('name', `%${params.search}%`);
+  }
+
+  if (params.category) {
+    query = query.eq('category', params.category);
+  }
+
+  if (params.status) {
+    const isPublished = params.status === 'published';
+    query = query.eq('is_published', isPublished);
+  }
+
+  // ページネーションとソート
+  const { data: casesData, error: casesError, count } = await query
+    .order('updated_at', { ascending: false })
+    .range(offset, offset + limit - 1);
     
   // データを整形（N+1クエリ問題を解決）
   const cases = casesData ? casesData.map((caseItem) => ({
@@ -68,7 +104,7 @@ export default async function CasesPage() {
     viewers: undefined,
     access_logs: undefined
   })) : [];
-    
+     
   if (casesError) {
     console.error('事例取得エラー:', casesError);
     return (
@@ -79,17 +115,47 @@ export default async function CasesPage() {
       </div>
     );
   }
-  
+
+  // ページネーション情報
+  const totalPages = Math.ceil((count || 0) / limit);
+  const hasNextPage = page < totalPages;
+  const hasPrevPage = page > 1;
+
   return (
     <div className="p-6">
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">施工事例一覧</h1>
+        <div>
+          <h1 className="text-2xl font-bold">施工事例一覧</h1>
+          <p className="text-sm text-gray-500 mt-1">
+            {count || 0}件中 {offset + 1}-{Math.min(offset + limit, count || 0)}件を表示
+          </p>
+        </div>
         <Link href="/cases/new">
           <Button>新規事例作成</Button>
         </Link>
       </div>
       
-      <CaseList cases={cases || []} />
+      {/* 検索・フィルタ機能（将来実装予定） */}
+      {/* TODO: 検索フォーム、カテゴリフィルタ、ステータスフィルタを追加 */}
+      
+      <CaseList 
+        cases={cases || []} 
+        pagination={{
+          currentPage: page,
+          totalPages,
+          hasNextPage,
+          hasPrevPage,
+          totalCount: count || 0
+        }}
+      />
     </div>
+  );
+}
+
+export default async function CasesPage(props: CasesPageProps) {
+  return (
+    <Suspense fallback={<LoadingState message="事例データを読み込み中..." />}>
+      <CasesContent {...props} />
+    </Suspense>
   );
 }
