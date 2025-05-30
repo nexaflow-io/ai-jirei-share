@@ -65,19 +65,38 @@ export default function InquiriesTable({ onStatusUpdate }: InquiriesTableProps) 
   const fetchInquiries = async () => {
     try {
       setLoading(true);
+      setError(null);
+      
       const response = await fetch('/api/dashboard/inquiries');
       
       if (!response.ok) {
-        throw new Error('問い合わせの取得に失敗しました');
+        const errorData = await response.json().catch(() => ({ error: 'レスポンスの解析に失敗しました' }));
+        throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
       }
       
       const data = await response.json();
+      
+      if (!data.inquiries) {
+        throw new Error('問い合わせデータの形式が正しくありません');
+      }
+      
       setInquiries(data.inquiries);
       setStats(data.stats);
-      setError(null);
+      console.log('問い合わせデータ取得成功:', { 
+        count: data.inquiries.length, 
+        stats: data.stats 
+      });
+      
     } catch (err: any) {
       console.error('問い合わせ取得エラー:', err);
-      setError(err.message);
+      setError(`問い合わせの取得に失敗しました: ${err.message}`);
+      setInquiries([]);
+      setStats({
+        total: 0,
+        new: 0,
+        inProgress: 0,
+        completed: 0
+      });
     } finally {
       setLoading(false);
     }
